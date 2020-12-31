@@ -16,6 +16,21 @@ int
 FS::format()
 {
     std::cout << "FS::format()\n";
+    for(unsigned i = 0; i != BLOCK_SIZE / 2; i++){
+        if(i == ROOT_BLOCK){
+            fat[ROOT_BLOCK] = FAT_EOF;
+        }
+        if(i == FAT_BLOCK){
+            fat[FAT_BLOCK] = FAT_EOF;
+        }
+        if(i != ROOT_BLOCK || i != FAT_BLOCK){
+            fat[i] = FAT_FREE;
+        }
+    }
+    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+
+
+
     return 0;
 }
 
@@ -25,6 +40,10 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
+
+    uint8_t test = 5;
+    disk.write(0,&test);
+
     return 0;
 }
 
