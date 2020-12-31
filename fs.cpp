@@ -24,10 +24,10 @@ FS::format()
             fat[FAT_BLOCK] = FAT_EOF;
         }
         if(i != ROOT_BLOCK || i != FAT_BLOCK){
-            fat[i] = FAT_FREE;
+            fat[i] = 8;
         }
     }
-    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+    disk.write(0,(char*)&fat);
 
 
 
@@ -42,7 +42,14 @@ FS::create(std::string filepath)
     std::cout << "FS::create(" << filepath << ")\n";
 
     uint8_t test = 5;
-    disk.write(0,&test);
+    disk.write(0,(char*)&test);
+    char test2 = 'A';
+    disk.write(1,&test2);
+
+    std::string result;
+    disk.read(1,(uint8_t*)&result);
+    std::cout<< result <<std::endl;
+
 
     return 0;
 }

@@ -9,7 +9,7 @@ Disk::Disk()
         std::cout << "Creating disk file: " << DISKNAME << std::endl;
         std::ofstream f(DISKNAME, std::ios::binary | std::ios::out);
         f.seekp((1<<23)-1);
-        f.write("", 1);
+        f.write("kkk", 1);
     }
     // the disk is simulated as a binary file
     diskfile.open(DISKNAME, std::ios::in | std::ios::out | std::ios::binary);
@@ -32,7 +32,7 @@ Disk::disk_file_exists (const std::string& name) {
 
 // writes one block to the disk
 int
-Disk::write(unsigned block_no, uint8_t *blk)
+Disk::write(unsigned block_no, char *blk)
 {
     if (DEBUG)
         std::cout << "Disk::write(" << block_no << ")\n";
@@ -43,7 +43,7 @@ Disk::write(unsigned block_no, uint8_t *blk)
     }
     unsigned offset = block_no * BLOCK_SIZE;
     diskfile.seekp(offset, std::ios_base::beg);
-    diskfile.write((char*)blk, BLOCK_SIZE);
+    diskfile.write(blk, BLOCK_SIZE);
     diskfile.flush();
     return 0;
 }

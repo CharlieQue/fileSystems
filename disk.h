@@ -20,7 +20,7 @@ public:
     unsigned get_no_blocks() { return no_blocks; }
     unsigned get_disk_size() { return disk_size; }
     // writes one block to the disk
-    int write(unsigned block_no, uint8_t *blk);
+    int write(unsigned block_no, char *blk);
     // reads one block from the disk
     int read(unsigned block_no, uint8_t *blk);
 };
