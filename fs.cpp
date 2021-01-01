@@ -88,10 +88,22 @@ FS::create(std::string filepath)
         
     }
     char fileName[56];
+    dir_entry newEntry;
     for(int i = 0; i != filepath.length(); i ++){
-        fileName[i]= filepath[i];
+        newEntry.file_name[i]= filepath[i];
     }
-    dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
+    newEntry.first_blk = (uint16_t)firstBlock;
+    newEntry.size = (uint32_t)line.length();
+    newEntry.type = 0;
+    newEntry.access_rights = READ|WRITE;
+
+    // dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
+    
+    root_dir[0] = newEntry;
+    disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
+    dir_entry test[BLOCK_SIZE/2];
+    disk.read(ROOT_BLOCK,(uint8_t*)&test);
+    std::cout << "this is the file name " <<test[0].file_name << std::endl;
     
     return 0;
 }

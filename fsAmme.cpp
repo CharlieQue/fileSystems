@@ -88,11 +88,16 @@ FS::create(std::string filepath)
         
     }
     char fileName[56];
+    dir_entry newEntry;
     for(int i = 0; i != filepath.length(); i ++){
-        fileName[i]= filepath[i];
+        newEntry.file_name[i]= filepath[i];
     }
-    dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
+    newEntry.first_blk = firstBlock;
+    newEntry.size = line.length()
+    // dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
     
+    root_dir[0] = newEntry;
+    disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
     return 0;
 }
 
