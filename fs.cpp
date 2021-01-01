@@ -1,5 +1,7 @@
 #include <iostream>
+#include <sstream>
 #include "fs.h"
+
 
 FS::FS()
 {
@@ -11,23 +13,33 @@ FS::~FS()
 
 }
 
+int
+FS::findFreeBlock(){
+    for(int i = 0; i != BLOCK_SIZE / 2; i ++ ){
+        if(fat[i] = 0){
+            return i;
+        }
+    }
+    return -1; // this will indecate that the disk is full.
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
 {
     std::cout << "FS::format()\n";
-    for(unsigned i = 0; i != BLOCK_SIZE / 2; i++){
+    for(unsigned i = 0; i != (BLOCK_SIZE / 2); i++){
         if(i == ROOT_BLOCK){
             fat[ROOT_BLOCK] = FAT_EOF;
         }
-        if(i == FAT_BLOCK){
+        else if(i == FAT_BLOCK){
             fat[FAT_BLOCK] = FAT_EOF;
         }
-        if(i != ROOT_BLOCK || i != FAT_BLOCK){
-            fat[i] = 8;
+        else if(i != ROOT_BLOCK || i != FAT_BLOCK){
+            fat[i] = FAT_FREE;
         }
     }
-    disk.write(0,(char*)&fat);
+    disk.write(FAT_BLOCK,(uint8_t*)&fat);
 
 
 
@@ -40,17 +52,44 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
-
-    uint8_t test = 5;
-    disk.write(0,(char*)&test);
-    char test2 = 'A';
-    disk.write(1,&test2);
-
-    std::string result;
-    disk.read(1,(uint8_t*)&result);
-    std::cout<< result <<std::endl;
-
-
+    std::string line;
+    char c;
+    std::getline(std::cin, line);
+    std::stringstream linestream(line);
+    char fileOtput[BLOCK_SIZE];
+    int i = 0;
+    int firstBlock = findFreeBlock();
+    bool firstBlockUsed = false;
+    while (linestream.get(c))
+    {
+        if(i == BLOCK_SIZE - 1){
+            if(!firstBlockUsed){
+                disk.write(firstBlock, (uint8_t*) &fileOtput);
+                firstBlockUsed = true;
+            }
+            else
+            {
+                disk.write(findFreeBlock(), (uint8_t*) &fileOtput);
+            }
+            i = 0;
+        }
+        fileOtput[i] = c;
+        i++;
+    }
+    if(i != 0){
+        if(!firstBlockUsed){
+                disk.write(firstBlock, (uint8_t*) &fileOtput);
+                firstBlockUsed = true;
+            }
+        else
+        {
+            disk.write(findFreeBlock(), (uint8_t*) &fileOtput);
+        }
+        
+    }
+    dir_entry newEntry = {filepath,(uint16_t)firstBlock,line.size(),0,READ|WRITE};
+    
+    newEntry.file_name = filepath;
     return 0;
 }
 

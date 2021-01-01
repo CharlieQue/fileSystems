@@ -1,7 +1,7 @@
 GCC=g++
 
 all: main.o shell.o fs.o disk.o
-	$(GCC) -std=c++11 -o filesystem main.o shell.o disk.o fs.o
+	$(GCC) -std=c++11 -o fs main.o shell.o disk.o fs.o
 
 main.o: main.cpp shell.h disk.h
 	$(GCC) -std=c++11 -O2 -c main.cpp
@@ -16,4 +16,10 @@ disk.o: disk.cpp disk.h
 	$(GCC) -std=c++11 -O2 -c disk.cpp
 
 clean:
-	rm filesystem main.o shell.o fs.o disk.o diskfile.bin
+	rm fs main.o shell.o fs.o disk.o diskfile.bin
+
+run:
+	./fs
+
+bin:
+	xxd diskfile.bin

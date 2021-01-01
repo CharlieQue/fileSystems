@@ -79,11 +79,11 @@ Shell::run()
 
         else if (cmd == "create") {
             if (cmd_line.size() != 2) {
-                std::cout << "Usage: create <file>\n";
+                std::cout << "Usage: create <file>"<< std::endl;
                 continue;
             }
             arg1 = cmd_line[1];
-            std::cout << "Enter data. Empty line to end.\n";
+            std::cout << "Enter data. Empty line to end." << std::endl;
             // check return value so everything is ok
             ret_val = filesystem.create(arg1);
             if (ret_val) {
