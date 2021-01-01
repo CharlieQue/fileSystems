@@ -87,7 +87,11 @@ FS::create(std::string filepath)
         }
         
     }
-    dir_entry newEntry = {filepath,(uint16_t)firstBlock,line.size(),0,READ|WRITE};
+    char fileName[56];
+    for(int i = 0; i != filepath.length(); i ++){
+        fileName[i]= filepath[i];
+    }
+    dir_entry newEntry = {fileName,(uint16_t)firstBlock,line.size(),0,READ|WRITE};
     
     newEntry.file_name = filepath;
     return 0;
