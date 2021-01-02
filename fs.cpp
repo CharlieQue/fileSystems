@@ -7,6 +7,9 @@ FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
     nextIntreyIndex = 0;
+    for(int i = 0; i != BLOCK_SIZE /sizeof(dir_entry); i++){
+        root_dir[i].type = 2;
+    }
 }
 
 FS::~FS()
@@ -78,7 +81,7 @@ FS::create(std::string filepath)
     char c;
     std::getline(std::cin, line);
     std::stringstream linestream(line);
-    char fileOtput[BLOCK_SIZE];
+    char fileOtput[line.size()];
     int* freeBlocks = findFreeBlocks(line.size());
     int streamSize = 0;
     int freeBlocksIndex = 0;
@@ -103,9 +106,16 @@ FS::create(std::string filepath)
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     free(freeBlocks);
     dir_entry newEntry;
-    for(int i = 0; i != filepath.length(); i ++){
-        newEntry.file_name[i]= filepath[i];
-    }
+    for(int i = 0; i != 56; i ++){
+        if(i != filepath.length() ){
+            newEntry.file_name[i]= filepath[i];
+        }
+        else
+        {
+            newEntry.file_name[i]= '\0';
+        }
+        
+    }    
     newEntry.first_blk = (uint16_t)freeBlocks[0];
     newEntry.size = (uint32_t)line.length();
     newEntry.type = 0;
@@ -121,7 +131,55 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
+    bool fileExists = false;
+    uint16_t firsBlock;
+    uint32_t fileSize;
+    char fileName[56];
+    for(int i = 0; i != 56; i ++){
+        if (i != filepath.length()){
+            fileName[i]= filepath[i];
+        }
+        else
+        {
+            fileName[i] = '\0';
+        }
+        
+    }
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(std::strcmp(root_dir[i].file_name,fileName) == 0){
+            fileExists = true;
+            firsBlock = root_dir[i].first_blk;
+            fileSize = root_dir[i].first_blk;
+            break;
+        }
+    }
+    if(!fileExists){
+        std::cout << "The file " << filepath << " do not exist!" << std::endl;
+        return -1;
+    }
     std::cout << "FS::cat(" << filepath << ")\n";
+    int numberOfBlocks;
+    if(! (fileSize % BLOCK_SIZE == 0)){
+        numberOfBlocks = (fileSize / BLOCK_SIZE )+1;
+    }
+    else
+    {
+        numberOfBlocks = fileSize / BLOCK_SIZE;
+    }
+    int fileBlocks[numberOfBlocks];
+    fileBlocks[0] = firsBlock;
+    for (int i = 1; i != numberOfBlocks; i++)
+    {
+        fileBlocks[i] = fat[fileBlocks[i-1]];
+    }
+
+    for(int i = 0; i != numberOfBlocks; i++){
+        char fileInput[BLOCK_SIZE];
+        disk.read(fileBlocks[i],(uint8_t*) & fileInput);
+        std::cout << fileInput << std::flush;
+
+    }
+    std::cout << std::endl;
     return 0;
 }
 
@@ -130,6 +188,12 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    std::cout << "Filename" <<  "     " << "Size" << std::endl;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(root_dir[i].type != 2){
+            std::cout << root_dir[i].file_name <<  "         " << root_dir[i].size << std::endl;
+        }
+    }
     return 0;
 }
 
