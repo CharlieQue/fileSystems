@@ -6,6 +6,7 @@
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
+    nextIntreyIndex = 0;
 }
 
 FS::~FS()
@@ -13,14 +14,36 @@ FS::~FS()
 
 }
 
-int
-FS::findFreeBlock(){
-    for(int i = 0; i != BLOCK_SIZE / 2; i ++ ){
-        if(fat[i] == 0){
-            return i;
+int* FS::findFreeBlocks(size_t fileSize){
+    int numOfBlocks;
+    if(! (fileSize % BLOCK_SIZE == 0)){
+        numOfBlocks = (fileSize/BLOCK_SIZE)+1;
+    }
+    else
+    {
+        numOfBlocks = fileSize / BLOCK_SIZE;
+    }
+    
+    int* freeBlocks = new int [numOfBlocks];
+
+    for(int i = 0; i != numOfBlocks; i ++ ){
+        for(int j = 0; j != BLOCK_SIZE /2; j ++){
+            if(fat[j] == 0){
+                freeBlocks[i] = j;
+                fat[j] = FAT_EOF;
+                break;
+            }
+
         }
     }
-    return -1; // this will indecate that the disk is full.
+    for(int i = 0; i != numOfBlocks; i ++){
+        if(i != numOfBlocks ){
+            fat[freeBlocks[i]] = freeBlocks[i+1]; 
+        }
+        
+    }
+
+    return freeBlocks; 
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -57,53 +80,37 @@ FS::create(std::string filepath)
     std::getline(std::cin, line);
     std::stringstream linestream(line);
     char fileOtput[BLOCK_SIZE];
-    int i = 0;
-    int firstBlock = findFreeBlock();
-    bool firstBlockUsed = false;
+    int* freeBlocks = findFreeBlocks(line.size());
+    int streamSize = 0;
+    int freeBlocksIndex = 0;
     while (linestream.get(c))
     {
-        if(i == BLOCK_SIZE - 1){
-            if(!firstBlockUsed){
-                disk.write(firstBlock, (uint8_t*) &fileOtput);
-                firstBlockUsed = true;
-            }
-            else
-            {
-                disk.write(findFreeBlock(), (uint8_t*) &fileOtput);
-            }
-            i = 0;
+        if(streamSize == BLOCK_SIZE - 1){
+            
+            disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
+            streamSize = 0;
+            freeBlocksIndex ++;
+            
         }
-        fileOtput[i] = c;
-        i++;
+        fileOtput[streamSize] = c;
+        streamSize++;
     }
-    if(i != 0){
-        if(!firstBlockUsed){
-                disk.write(firstBlock, (uint8_t*) &fileOtput);
-                firstBlockUsed = true;
-            }
-        else
-        {
-            disk.write(findFreeBlock(), (uint8_t*) &fileOtput);
-        }
+    if(streamSize != 0){
+        
+        disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
         
     }
-    char fileName[56];
-    dir_entry newEntry;
-    for(int i = 0; i != filepath.length(); i ++){
-        newEntry.file_name[i]= filepath[i];
-    }
-    newEntry.first_blk = (uint16_t)firstBlock;
-    newEntry.size = (uint32_t)line.length();
-    newEntry.type = 0;
-    newEntry.access_rights = READ|WRITE;
-
-    // dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
-    
-    root_dir[0] = newEntry;
-    disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
-    dir_entry test[BLOCK_SIZE/2];
-    disk.read(ROOT_BLOCK,(uint8_t*)&test);
-    std::cout << "this is the file name " <<test[0].file_name << std::endl;
+    // dir_entry newEntry;
+    // for(int i = 0; i != filepath.length(); i ++){
+    //     newEntry.file_name[i]= filepath[i];
+    // }
+    // newEntry.first_blk = (uint16_t)firstBlock;
+    // newEntry.size = (uint32_t)line.length();
+    // newEntry.type = 0;
+    // newEntry.access_rights = READ|WRITE;
+    // root_dir[nextIntreyIndex] = newEntry;
+    // nextIntreyIndex ++;
+    // disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
     
     return 0;
 }

@@ -30,12 +30,13 @@ private:
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
     dir_entry root_dir[BLOCK_SIZE / sizeof(dir_entry)];
+    int nextIntreyIndex;
 
 public:
     FS();
     ~FS();
     // finds a free block in the disk
-    int findFreeBlock();
+    int* findFreeBlocks(size_t fileSize);
     // formats the disk, i.e., creates an empty file system
     int format();
     // create <filepath> creates a new file on the disk, the data content is

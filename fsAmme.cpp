@@ -6,6 +6,7 @@
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
+    nextIntreyIndex = 0;
 }
 
 FS::~FS()
@@ -13,14 +14,36 @@ FS::~FS()
 
 }
 
-int
-FS::findFreeBlock(){
-    for(int i = 0; i != BLOCK_SIZE / 2; i ++ ){
-        if(fat[i] == 0){
-            return i;
+int16_t* FS::findFreeBlocks(int fileSize){
+    int numOfBlocks;
+    if(! (fileSize % BLOCK_SIZE == 0)){
+        numOfBlocks = (fileSize/BLOCK_SIZE)+1;
+    }
+    else
+    {
+        numOfBlocks = fileSize / BLOCK_SIZE;
+    }
+    
+    int16_t* freeBlocks = new int16_t [numOfBlocks];
+
+    for(int i = 0; i != numOfBlocks; i ++ ){
+        for(int j = 0; j != BLOCK_SIZE /2; j ++){
+            if(fat[j] == 0){
+                freeBlocks[i] = j;
+                fat[j] = FAT_EOF;
+                break;
+            }
+
         }
     }
-    return -1; // this will indecate that the disk is full.
+    for(int i = 0; i != numOfBlocks; i ++){
+        if(i != numOfBlocks ){
+            fat[freeBlocks[i]] = freeBlocks[i+1]; 
+        }
+        
+    }
+
+    return freeBlocks; 
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -87,17 +110,18 @@ FS::create(std::string filepath)
         }
         
     }
-    char fileName[56];
     dir_entry newEntry;
     for(int i = 0; i != filepath.length(); i ++){
         newEntry.file_name[i]= filepath[i];
     }
-    newEntry.first_blk = firstBlock;
-    newEntry.size = line.length()
-    // dir_entry newEntry = {*fileName,static_cast<char>(firstBlock),static_cast<char>(line.size()),0,READ|WRITE};
-    
-    root_dir[0] = newEntry;
+    newEntry.first_blk = (uint16_t)firstBlock;
+    newEntry.size = (uint32_t)line.length();
+    newEntry.type = 0;
+    newEntry.access_rights = READ|WRITE;
+    root_dir[nextIntreyIndex] = newEntry;
+    nextIntreyIndex ++;
     disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
+    
     return 0;
 }
 
