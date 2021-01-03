@@ -43,6 +43,7 @@ Disk::write(unsigned block_no, uint8_t *blk)
     }
     unsigned offset = block_no * BLOCK_SIZE;
     diskfile.seekp(offset, std::ios_base::beg);
+    
     diskfile.write((char *) blk, BLOCK_SIZE);
     diskfile.flush();
     return 0;
