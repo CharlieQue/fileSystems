@@ -364,6 +364,31 @@ int
 FS::rm(std::string filepath)
 {
     std::cout << "FS::rm(" << filepath << ")\n";
+    uint16_t firsBlock;
+    uint32_t fileSize;
+    int numberOfBlocks;
+    dir_entry *entry;
+    bool flag = fileExists(firsBlock,fileSize,numberOfBlocks,filepath,ROOT_BLOCK,&entry);
+    if(!flag){
+        std::cout << "The file " << filepath << " do not exist!" << std::endl;
+        return -1;
+    }
+    int currentBlock = firsBlock;
+    while (fat[currentBlock] != FAT_EOF ){
+        int tmp = currentBlock;
+        currentBlock = fat[currentBlock];
+        fat[tmp] = FAT_FREE;
+    }
+    fat[currentBlock] = FAT_FREE;
+    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+
+    std::fill_n(entry->file_name, 56, '\0');
+    entry->access_rights = 0;
+    entry->first_blk = 0;
+    entry->size = 0;
+    entry->type = 0;
+    disk.write(currentRootBlock,(uint8_t*)&root_dir);
+    
     return 0;
 }
 
