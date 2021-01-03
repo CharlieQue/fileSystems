@@ -15,6 +15,8 @@ FS::~FS()
 
 }
 
+
+
 int* FS::findFreeBlocks(size_t fileSize){
     int numOfBlocks;
     if(! (fileSize % BLOCK_SIZE == 0)){
@@ -61,18 +63,38 @@ int* FS::findFreeBlocks(size_t fileSize){
     return freeBlocks; 
 }
 
+int* 
+FS::appendBlocks(uint16_t firstBlock,size_t fileSize){
+    int* freeBlocks = findFreeBlocks(fileSize);
+    if(freeBlocks == nullptr){
+        return nullptr;
+    }
+    int lastBlock = firstBlock;
+    while (fat[lastBlock] != FAT_EOF ){
+        lastBlock = fat[lastBlock];
+    }
+    fat[lastBlock] = freeBlocks[0];
+    return freeBlocks;
+
+}
+
 bool 
-FS::fileExists(uint16_t * firsBlock, uint32_t * fileSize, int * numberOfBlocks,std::string filepath){
+FS::fileExists(uint16_t * firstBlock, uint32_t * fileSize, int * numberOfBlocks,std::string filepath, uint16_t rootBlock = ROOT_BLOCK){
     bool fileExists = false;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(root_dir[i].file_name == filepath){
             fileExists = true;
-            *firsBlock = root_dir[i].first_blk;
+            *firstBlock = root_dir[i].first_blk;
             *fileSize = root_dir[i].size;
             break;
         }
     }
     if(!fileExists){
+        if(fat[rootBlock] != FAT_EOF){
+            disk.read(fat[rootBlock],(uint8_t*)&root_dir);
+            FS::fileExists(firstBlock,fileSize,numberOfBlocks,filepath,fat[rootBlock]);
+        }
+        disk.read(ROOT_BLOCK,(uint8_t*)&root_dir);
         return false;
     }
     if(! (*fileSize % BLOCK_SIZE == 0)){
@@ -104,7 +126,13 @@ FS::entryInit(std::string filepath, uint_fast32_t fileSize, uint16_t firstBlock)
         }
     }
     if(freeIntreyIndex == -1){
-        return false;
+        
+        int * nextRootBlock = appendBlocks(ROOT_BLOCK,BLOCK_SIZE);
+        if(nextRootBlock == nullptr){
+            return false;
+        }        
+        memset(root_dir,0,(BLOCK_SIZE / sizeof(dir_entry)) +1); 
+        entryInit(filepath,fileSize,firstBlock);
     }
     root_dir[freeIntreyIndex] = newEntry;
     disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
