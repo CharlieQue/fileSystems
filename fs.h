@@ -31,8 +31,9 @@ private:
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
     dir_entry root_dir[(BLOCK_SIZE / sizeof(dir_entry)) +1];
-    bool fileExists(uint16_t & firsBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath, uint16_t rootBlock = ROOT_BLOCK );
-    bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock,uint16_t rootBlock = ROOT_BLOCK );
+    int currentRootBlock;
+    bool fileExists(uint16_t & firsBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath, uint16_t rootBlock = ROOT_BLOCK,dir_entry** entry = nullptr );
+    bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock,uint16_t rootBlock = ROOT_BLOCK, bool lastBlockLoaded = false );
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
 
 public:
