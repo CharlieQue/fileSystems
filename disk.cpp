@@ -61,6 +61,6 @@ Disk::read(unsigned block_no, uint8_t *blk)
     }
     unsigned offset = block_no * BLOCK_SIZE;
     diskfile.seekg(offset, std::ios_base::beg);
-    diskfile.read((char*)blk, BLOCK_SIZE);
+    diskfile.read((char*)blk, BLOCK_SIZE );
     return 0;
 }

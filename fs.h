@@ -29,8 +29,7 @@ private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    dir_entry root_dir[BLOCK_SIZE / sizeof(dir_entry)];
-    int nextIntreyIndex;
+    dir_entry root_dir[(BLOCK_SIZE / sizeof(dir_entry)) +1];
 
 public:
     FS();

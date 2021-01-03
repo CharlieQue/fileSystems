@@ -6,10 +6,8 @@
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
-    nextIntreyIndex = 0;
-    for(int i = 0; i != BLOCK_SIZE /sizeof(dir_entry); i++){
-        root_dir[i].type = 2;
-    }
+    disk.read(FAT_BLOCK,(uint8_t*) & fat);
+    disk.read(ROOT_BLOCK,(uint8_t*) & root_dir);
 }
 
 FS::~FS()
@@ -81,14 +79,14 @@ FS::create(std::string filepath)
     char c;
     std::getline(std::cin, line);
     std::stringstream linestream(line);
-    char fileOtput[line.size()];
+    char fileOtput[BLOCK_SIZE];
+    std::fill_n(fileOtput,BLOCK_SIZE, '\0');
     int* freeBlocks = findFreeBlocks(line.size());
     int streamSize = 0;
     int freeBlocksIndex = 0;
     while (linestream.get(c))
     {
         if(streamSize == BLOCK_SIZE - 1){
-            
             disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
             streamSize = 0;
             std::memset(fileOtput,0,BLOCK_SIZE);
@@ -99,29 +97,28 @@ FS::create(std::string filepath)
         streamSize++;
     }
     if(streamSize != 0){
-        
         disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
         
     }
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     free(freeBlocks);
     dir_entry newEntry;
-    for(int i = 0; i != 56; i ++){
-        if(i != filepath.length() ){
-            newEntry.file_name[i]= filepath[i];
-        }
-        else
-        {
-            newEntry.file_name[i]= '\0';
-        }
-        
-    }    
+    std::fill_n(newEntry.file_name, 56, '\0');
+    for(int i = 0; i != filepath.length(); i ++){
+        newEntry.file_name[i]= filepath[i];
+    }
     newEntry.first_blk = (uint16_t)freeBlocks[0];
     newEntry.size = (uint32_t)line.length();
     newEntry.type = 0;
     newEntry.access_rights = READ|WRITE;
-    root_dir[nextIntreyIndex] = newEntry;
-    nextIntreyIndex ++;
+    int freeIntreyIndex;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(strlen(root_dir[i].file_name) == 0){
+            freeIntreyIndex = i;
+            break;
+        }
+    }
+    root_dir[freeIntreyIndex] = newEntry;
     disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
     
     return 0;
@@ -135,14 +132,10 @@ FS::cat(std::string filepath)
     uint16_t firsBlock;
     uint32_t fileSize;
     char fileName[56];
-    for(int i = 0; i != 56; i ++){
-        if (i != filepath.length()){
-            fileName[i]= filepath[i];
-        }
-        else
-        {
-            fileName[i] = '\0';
-        }
+    std::fill_n(fileName, 56, '\0');
+    for(int i = 0; i != filepath.length(); i ++){
+        
+        fileName[i]= filepath[i];
         
     }
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
@@ -190,7 +183,7 @@ FS::ls()
     std::cout << "FS::ls()\n";
     std::cout << "Filename" <<  "     " << "Size" << std::endl;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
-        if(root_dir[i].type != 2){
+        if(strlen(root_dir[i].file_name) != 0){
             std::cout << root_dir[i].file_name <<  "         " << root_dir[i].size << std::endl;
         }
     }
@@ -212,6 +205,7 @@ int
 FS::mv(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
+    std::cout << BLOCK_SIZE / sizeof(dir_entry) << std::endl;
     return 0;
 }
 
