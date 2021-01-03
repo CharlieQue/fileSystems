@@ -26,6 +26,9 @@ int* FS::findFreeBlocks(size_t fileSize){
     }
     
     int* freeBlocks = new int [numOfBlocks];
+    for(int i = 0; i != numOfBlocks ; i ++){
+        freeBlocks[i] = -1;
+    }
 
     for(int i = 0; i != numOfBlocks; i ++ ){
         
@@ -38,6 +41,15 @@ int* FS::findFreeBlocks(size_t fileSize){
 
         }
     }
+    if(freeBlocks[numOfBlocks -1] == -1){
+        for(int i = 0; i != numOfBlocks ; i ++){
+            if(freeBlocks[i] == -1){
+                fat[freeBlocks[i]] = FAT_FREE;
+            }
+        }
+        free(freeBlocks);
+        return nullptr;
+    }
 
     for(int i = 0; i != numOfBlocks; i ++){
         if(i != numOfBlocks - 1 ){
@@ -47,6 +59,57 @@ int* FS::findFreeBlocks(size_t fileSize){
     }
 
     return freeBlocks; 
+}
+
+bool 
+FS::fileExists(uint16_t * firsBlock, uint32_t * fileSize, int * numberOfBlocks,std::string filepath){
+    bool fileExists = false;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(root_dir[i].file_name == filepath){
+            fileExists = true;
+            *firsBlock = root_dir[i].first_blk;
+            *fileSize = root_dir[i].size;
+            break;
+        }
+    }
+    if(!fileExists){
+        return false;
+    }
+    if(! (*fileSize % BLOCK_SIZE == 0)){
+        *numberOfBlocks = (*fileSize / BLOCK_SIZE )+1;
+    }
+    else
+    {
+        *numberOfBlocks = *fileSize / BLOCK_SIZE;
+    }
+    return true;
+
+}
+bool
+FS::entryInit(std::string filepath, uint_fast32_t fileSize, uint16_t firstBlock){
+    dir_entry newEntry;
+    std::fill_n(newEntry.file_name, 56, '\0');
+    for(int i = 0; i != filepath.length(); i ++){
+        newEntry.file_name[i]= filepath[i];
+    }
+    newEntry.first_blk = firstBlock;
+    newEntry.size = fileSize;
+    newEntry.type = 0;
+    newEntry.access_rights = READ|WRITE;
+    int freeIntreyIndex = -1;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(strlen(root_dir[i].file_name) == 0){
+            freeIntreyIndex = i;
+            break;
+        }
+    }
+    if(freeIntreyIndex == -1){
+        return false;
+    }
+    root_dir[freeIntreyIndex] = newEntry;
+    disk.write(ROOT_BLOCK,(uint8_t*)&root_dir);
+    return true;
+
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -82,6 +145,10 @@ FS::create(std::string filepath)
     char fileOtput[BLOCK_SIZE];
     std::fill_n(fileOtput,BLOCK_SIZE, '\0');
     int* freeBlocks = findFreeBlocks(line.size());
+    if(freeBlocks == nullptr){
+        std::cout << "The file can't be created, no enough space on disk" << std::endl;
+        return -1;
+    }
     int streamSize = 0;
     int freeBlocksIndex = 0;
     while (linestream.get(c))
@@ -128,37 +195,15 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    bool fileExists = false;
+    
     uint16_t firsBlock;
     uint32_t fileSize;
-    char fileName[56];
-    std::fill_n(fileName, 56, '\0');
-    for(int i = 0; i != filepath.length(); i ++){
-        
-        fileName[i]= filepath[i];
-        
-    }
-    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
-        if(std::strcmp(root_dir[i].file_name,fileName) == 0){
-            fileExists = true;
-            firsBlock = root_dir[i].first_blk;
-            fileSize = root_dir[i].first_blk;
-            break;
-        }
-    }
-    if(!fileExists){
+    int numberOfBlocks;
+    if(!fileExists(&firsBlock,&fileSize,&numberOfBlocks,filepath)){
         std::cout << "The file " << filepath << " do not exist!" << std::endl;
         return -1;
     }
     std::cout << "FS::cat(" << filepath << ")\n";
-    int numberOfBlocks;
-    if(! (fileSize % BLOCK_SIZE == 0)){
-        numberOfBlocks = (fileSize / BLOCK_SIZE )+1;
-    }
-    else
-    {
-        numberOfBlocks = fileSize / BLOCK_SIZE;
-    }
     int fileBlocks[numberOfBlocks];
     fileBlocks[0] = firsBlock;
     for (int i = 1; i != numberOfBlocks; i++)
@@ -195,7 +240,43 @@ FS::ls()
 int
 FS::cp(std::string sourcefilepath, std::string destfilepath)
 {
+    uint16_t firsBlock;
+    uint32_t fileSize;
+    int numberOfBlocks;
+    if(!fileExists(&firsBlock,&fileSize,&numberOfBlocks,sourcefilepath)){
+        std::cout << "The file " << sourcefilepath << " do not exist!" << std::endl;
+        return -1;
+    }
     std::cout << "FS::cp(" << sourcefilepath << "," << destfilepath << ")\n";
+    int fileBlocks[numberOfBlocks];
+    fileBlocks[0] = firsBlock;
+    for (int i = 1; i != numberOfBlocks; i++)
+    {
+        fileBlocks[i] = fat[fileBlocks[i-1]];
+    }
+
+    char fileInput[numberOfBlocks][BLOCK_SIZE];
+    for(int i = 0; i != numberOfBlocks; i++){
+        disk.read(fileBlocks[i],(uint8_t*) & fileInput[i]);
+    }
+    int* freeBlocks = findFreeBlocks(fileSize);
+    if(freeBlocks == nullptr){
+        std::cout << "The file can't be copied, no enough space on disk" << std::endl;
+        return -1;
+    }
+    for(int i = 0; i != numberOfBlocks; i++){
+        disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
+    }
+    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+    entryInit(destfilepath,fileSize,firsBlock);
+    
+
+
+
+
+
+
+    free(freeBlocks);
     return 0;
 }
 
