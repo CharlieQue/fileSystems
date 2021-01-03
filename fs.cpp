@@ -8,6 +8,7 @@ FS::FS()
     std::cout << "FS::FS()... Creating file system\n";
     disk.read(FAT_BLOCK,(uint8_t*) & fat);
     disk.read(ROOT_BLOCK,(uint8_t*) & root_dir);
+    
 }
 
 FS::~FS()
@@ -118,14 +119,15 @@ FS::entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, uint16
     newEntry.size = fileSize;
     newEntry.type = 0;
     newEntry.access_rights = READ|WRITE;
-    int freeIntreyIndex = -1;
+    int freeEnteryIndex = -1;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(strlen(root_dir[i].file_name) == 0){
-            freeIntreyIndex = i;
+            freeEnteryIndex = i;
             break;
         }
     }
-    if(freeIntreyIndex == -1){
+    
+    if(freeEnteryIndex == -1){
 
         int * nextRootBlock = appendBlocks(ROOT_BLOCK,BLOCK_SIZE);
         if(nextRootBlock == nullptr){
@@ -134,7 +136,8 @@ FS::entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, uint16
         memset(root_dir,0,(BLOCK_SIZE / sizeof(dir_entry)) +1); 
         entryInit(filepath,fileSize,firstBlock, nextRootBlock[0]);
     }
-    root_dir[freeIntreyIndex] = newEntry;
+    
+    root_dir[freeEnteryIndex] = newEntry;
     disk.write(rootBlock,(uint8_t*)&root_dir);
     return true;
 
@@ -179,9 +182,12 @@ FS::create(std::string filepath)
     }
     int streamSize = 0;
     int freeBlocksIndex = 0;
+    
     while (linestream.get(c))
     {
+        
         if(streamSize == BLOCK_SIZE - 1){
+            
             disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
             streamSize = 0;
             std::memset(fileOtput,0,BLOCK_SIZE);
@@ -191,10 +197,12 @@ FS::create(std::string filepath)
         fileOtput[streamSize] = c;
         streamSize++;
     }
+    
     if(streamSize != 0){
         disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
-        
     }
+    
+
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     entryInit(filepath,line.length(),freeBlocks[0]);
     free(freeBlocks);
