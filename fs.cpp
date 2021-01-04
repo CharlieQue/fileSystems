@@ -388,7 +388,7 @@ FS::rm(std::string filepath)
     entry->size = 0;
     entry->type = 0;
     disk.write(currentRootBlock,(uint8_t*)&root_dir);
-    
+
     return 0;
 }
 
@@ -397,7 +397,77 @@ FS::rm(std::string filepath)
 int
 FS::append(std::string filepath1, std::string filepath2)
 {
+    uint16_t file1_FirstBlock;
+    uint32_t file1_FileSize;
+    int file1_NumberOfBlocks;
+    if(!fileExists(file1_FirstBlock,file1_FileSize,file1_NumberOfBlocks,filepath1)){
+        std::cout << "The file " << filepath1 << " do not exist!" << std::endl;
+        return -1;
+    }
+    uint16_t file2_FirstBlock;
+    uint32_t file2_FileSize;
+    int file2_NumberOfBlocks;
+    
+    if(!fileExists(file2_FirstBlock,file2_FileSize,file2_NumberOfBlocks,filepath2)){
+        std::cout << "The file "  << filepath2 << " do not exist!" << std::endl;
+        return -1;
+    }
+    int file2_lastBlock = file2_FirstBlock;
+    while(fat[file2_lastBlock] != FAT_EOF){
+        file2_lastBlock = fat[file2_lastBlock];
+    }
     std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+
+    int requierdblocks = 0 ;
+    int * newBlocks = nullptr;
+    std::cout << "breakpoint 1" << std::endl;
+    if((file1_FileSize + file1_FileSize)/BLOCK_SIZE > file1_NumberOfBlocks){
+        
+        if((file1_FileSize + file2_FileSize) % BLOCK_SIZE == 0){
+            requierdblocks = ((file1_FileSize + file2_FileSize) / BLOCK_SIZE) - file2_NumberOfBlocks;
+        }
+        else
+        {
+            requierdblocks = ((file1_FileSize + file2_FileSize) / BLOCK_SIZE) + 1 - file2_NumberOfBlocks;
+        }
+        
+        newBlocks = appendBlocks(file2_FirstBlock,requierdblocks * BLOCK_SIZE);
+    }
+    std::cout << "breakpoint 2" << std::endl;
+    char file1_Input[file1_NumberOfBlocks][BLOCK_SIZE];
+    int currentBlock = file1_FirstBlock;
+    int i = 0;
+    while(currentBlock != FAT_EOF){
+        disk.read(currentBlock,(uint8_t*)&file1_Input[i]);
+        currentBlock = fat[currentBlock];
+        i++;
+    }
+    std::cout << "breakpoint 3" << std::endl;
+    char file2[BLOCK_SIZE];
+    disk.read(file2_lastBlock,(uint8_t*)&file2);
+    int file2_startIndex = (file2_FileSize % BLOCK_SIZE) ;
+    int file1_dataIndex = 0;
+    std::cout << "breakpoint 4" << std::endl;
+    
+    int file1_blockIndex = 0;
+    while(file1_blockIndex != file1_NumberOfBlocks && file2_lastBlock != FAT_EOF ){
+        for(int dataIndex = file2_startIndex; dataIndex != BLOCK_SIZE; dataIndex ++){
+            file2[dataIndex] = file1_Input[file1_blockIndex][file1_dataIndex];
+            if(file1_dataIndex == BLOCK_SIZE - 1){
+                file1_dataIndex = 0;
+                file1_blockIndex ++;
+            }
+            file1_dataIndex++;
+        }
+        file2_startIndex = 0;
+        std::cout << file2_lastBlock << std::endl;
+        disk.write(file2_lastBlock,(uint8_t*)&file2);
+        file2_lastBlock = fat[file2_lastBlock];
+
+    }
+    
+
+
     return 0;
 }
 
