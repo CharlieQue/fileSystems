@@ -1,6 +1,7 @@
 GCC=g++
 
 all: main.o shell.o fs.o disk.o
+	
 	$(GCC) -std=c++11 -o fs main.o shell.o disk.o fs.o
 	./fs
 

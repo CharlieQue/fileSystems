@@ -30,10 +30,10 @@ private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    dir_entry root_dir[(BLOCK_SIZE / sizeof(dir_entry)) +1];
-    int currentRootBlock;
-    bool fileExists(uint16_t & firsBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath, uint16_t rootBlock = ROOT_BLOCK,dir_entry** entry = nullptr );
-    bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock,uint16_t rootBlock = ROOT_BLOCK, bool lastBlockLoaded = false );
+    dir_entry cwd[(BLOCK_SIZE / sizeof(dir_entry)) +1];
+    int cwdBlock;
+    bool fileExists(uint16_t & firsBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath, int &type );
+    bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, int type,int access_rights = WRITE | READ );
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
 
 public:
@@ -67,7 +67,7 @@ public:
     // in the current directory
     int mkdir(std::string dirpath);
     // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
-    int cd(std::string dirpath);
+    int cd(std::string dirpath,bool privateFunc = false );
     // pwd prints the full path, i.e., from the root directory, to the current
     // directory, including the currect directory name
     int pwd();
