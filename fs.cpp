@@ -9,7 +9,6 @@ FS::FS()
     disk.read(FAT_BLOCK,(uint8_t*) & fat);
     disk.read(ROOT_BLOCK,(uint8_t*) & cwd);
     cwdBlock = ROOT_BLOCK;
-    
 }
 
 FS::~FS()
@@ -203,7 +202,6 @@ FS::format()
     newEntry.size = 0;
     newEntry.type = TYPE_DIR;
     newEntry.access_rights = READ | WRITE;
-    std::cout << newEntry.access_rights << std::endl;
     cwd[0] = newEntry;
     disk.write(ROOT_BLOCK,(uint8_t*)&cwd);
     return 0;
@@ -268,8 +266,6 @@ FS::create(std::string filepath)
     }
     cwdBlock = dirBlock;
     disk.read(cwdBlock,(uint8_t*)&cwd);
-    std::cout << dirBlock << std::endl;
-    
     return 0;
 }
 
@@ -290,28 +286,32 @@ FS::cat(std::string filepath)
         std::cout << filepath <<" is a directory." << std::endl;
         return -1;
     }
-    // int fileBlocks[numberOfBlocks];
-    // fileBlocks[0] = firsBlock;
-    // for (int i = 1; i != numberOfBlocks; i++)
-    // {
-    //     fileBlocks[i] = fat[fileBlocks[i-1]];
-    // }
+    int fileBlocks[numberOfBlocks];
+    fileBlocks[0] = firsBlock;
+    
+    for (int i = 1; i != numberOfBlocks; i++)
+    {
+        fileBlocks[i] = fat[fileBlocks[i-1]];
+    }
 
-    // for(int i = 0; i != numberOfBlocks; i++){
-    //     char fileInput[BLOCK_SIZE];
-    //     disk.read(fileBlocks[i],(uint8_t*) & fileInput);
-    //     std::cout << fileInput << std::flush;
-
-    // }
-    // std::cout << std::endl;
-    int lastBlock = firsBlock;
-    while(fat[lastBlock] != FAT_EOF){
+    for(int i = 0; i != numberOfBlocks; i++){
         char fileInput[BLOCK_SIZE];
-        disk.read(fat[lastBlock],(uint8_t*) & fileInput);
+        disk.read(fileBlocks[i],(uint8_t*) & fileInput);
         std::cout << fileInput << std::flush;
-        lastBlock = fat[lastBlock];
+
     }
     std::cout << std::endl;
+    
+    // int lastBlock = firsBlock;
+    // std::cout << "LAST_BLOCK = " << lastBlock << std::endl;
+    // while(lastBlock != FAT_EOF){
+    //     std::cout << "LAST_BLOCK = " << lastBlock << std::endl;
+    //     char fileInput[BLOCK_SIZE];
+    //     disk.read(fat[lastBlock],(uint8_t*) & fileInput);
+    //     std::cout << fileInput << std::flush;
+    //     lastBlock = fat[lastBlock];
+    // }
+    // std::cout << std::endl;
     return 0;
 }
 
@@ -320,10 +320,22 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
-    std::cout << "Filename" <<  "     " << "Type"<< "     " << "Access rights"<<"     " << "Size" << std::endl;
+    std::string accessArray [7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
+
+    std::cout << std::setw(25) << std::left << "Filename" << std::setw(25) << std::left  <<  "Type" << std::setw(25) << std::left << "Access rights" << std::setw(25) << std::left << "Size" << std::endl;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(strlen(cwd[i].file_name) != 0 && (cwd[i].file_name[0] != '.')){
-            std::cout << cwd[i].file_name <<  "         " << cwd[i].type <<   "         " << cwd[i].access_rights<<   "         " << cwd[i].size <<std::endl;
+            std::cout << std::setw(25) << std::left << cwd[i].file_name;
+            if(cwd[i].type == TYPE_FILE) {
+                std::cout << std::setw(25) << std::left << "File";
+            }
+            else
+            {
+                std::cout << std::setw(25) << std::left << "Dir";
+            }
+            std::cout << std::setw(25) << std::left << accessArray[cwd[i].access_rights - 1];
+            std::cout << std::setw(25) << std::left << cwd[i].size;
+            std::cout << std::endl;
         }
     }
     return 0;

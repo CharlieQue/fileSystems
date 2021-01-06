@@ -17,6 +17,7 @@
 #define WRITE 0x02
 #define EXECUTE 0x01
 
+
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
     uint16_t first_blk; // index in the FAT for the first block of the file
@@ -36,6 +37,7 @@ private:
     bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, int type,int access_rights = WRITE | READ );
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
 
+    
 public:
     FS();
     ~FS();
