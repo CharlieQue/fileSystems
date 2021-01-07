@@ -465,75 +465,154 @@ int
 FS::mv(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
-    uint16_t sourceFileFirsBlock , destFileFirsBlock ;
-    uint32_t sourceFileSize , destFileSize;
-    int sourceFileNumberOfBlocks , destFileNumberOfBlocks;
-    int sourceFileType , destFileType;
-    // if(!fileExists(sourceFileFirsBlock,sourceFileSize,sourceFileNumberOfBlocks,sourcepath,sourceFileType)){
-    //     std::cout << "The file " << sourcepath << " do not exist!" << std::endl;
-    //     return -1;
-    // }
-    int sourceFileWD = cwdBlock;
-    // if(fileExists(destFileFirsBlock,destFileSize,destFileNumberOfBlocks,destpath,destFileType)){
-    //     if(destFileType == TYPE_FILE){
-    //         std::cout<< "The file " << destpath << " already exists, not allowed to have two files with the same name in the same directory." << std::endl;
-    //         return -1;
-    //     }
-    // }
-    int destFileWD = cwdBlock;
-    bool condition1 = (sourceFileType == TYPE_FILE && destFileType == TYPE_FILE);
-    bool condition2 = (sourceFileType == TYPE_FILE && destFileType == TYPE_DIR);
-    if(condition1|| condition2){
-        disk.read(sourceFileWD,(uint8_t*)&cwd);
-        dir_entry currentEntry;
-        int seperatorIndex = 0;
-        std::string fileName = "";
-        if(sourcepath[0] == '.' || sourcepath[0] == '/'){
-            for(int i = 0; i != sourcepath.length(); i++){
-                if(sourcepath[i] == '/'){
-                    seperatorIndex = i;
-                }
-            }
-            fileName.append(&sourcepath[seperatorIndex +1]);
-        }
-        else{
-            fileName = sourcepath;
-        }
-        
-        for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
-            if(cwd[i].file_name == fileName){
-                currentEntry = cwd[i];
-                dir_entry temp;
-                cwd[i] = temp;
-                if(condition1){
-                    entryInit(destpath,sourceFileSize,sourceFileFirsBlock,TYPE_FILE,currentEntry.access_rights);
-                }
-                else if(condition2){
-                    std::string finalPath = destpath + '/' + fileName;
-                    entryInit(finalPath,sourceFileSize,sourceFileFirsBlock,TYPE_FILE,currentEntry.access_rights);
-                }
-                
-            }
+    int savedBlock = cwdBlock;
+
+    std::vector<std::string> sourcePathArgs;
+    std::vector<std::string> destPathArgs;
+    dir_entry source_file_entry;
+    dir_entry dest_file_entry;
+    pathExtruder(sourcepath, sourcePathArgs);
+    pathExtruder(destpath, destPathArgs);
+
+    for (int i = 0; i != sourcePathArgs.size() - 1; i++){
+        if(cd(sourcePathArgs[i],true) == -1){
+            std::cout << sourcepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
         }
     }
+    bool sourceFlag = fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry);
+    int sourceFileBlock;
+    std::string fileName = dest_file_entry.file_name;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(cwd[i].file_name == sourcePathArgs[sourcePathArgs.size() - 1]){
+            sourceFileBlock = cwd[i].first_blk; 
+            std::fill_n(cwd[i].file_name, 56, '\0');
+            break;
+        }
+    }
+    disk.write(cwdBlock,(uint8_t*)&cwd);
+
+    
+
+    if(!sourceFlag){
+        std::cout << "The file or directory " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+
     else
     {
-        disk.read(sourceFileWD,(uint8_t*)&cwd);
-        dir_entry myDir = cwd[0];
-        disk.read(cwd[1].first_blk,(uint8_t*)&cwd);
-        for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
-            if(cwd[i].file_name == myDir.file_name){
-                dir_entry temp;
-                cwd[i] = temp;
-                break;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        for (int i = 0; i != destPathArgs.size() - 1; i++){
+            if(cd(destPathArgs[i],true) == -1){
+                std::cout << destpath << " No such file or directory" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
             }
         }
-        disk.read(sourceFileWD,(uint8_t*)&cwd);
-        cwd[1].first_blk = destFileWD;
-        std::string finalPath = destpath + '/' + myDir.file_name;
-        entryInit(finalPath,sourceFileSize,sourceFileFirsBlock,TYPE_DIR,myDir.access_rights);
+        
+        bool desFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
+        int destFileWD = dest_file_entry.first_blk;
+        
+        if ( dest_file_entry.type == TYPE_DIR ){
+            cd( dest_file_entry.file_name, true );
+            if(desFlag){
+                dir_entry tmp;
+                if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], tmp)){
+                    if(!entryInit(sourcePathArgs[sourcePathArgs.size() - 1],source_file_entry.size,source_file_entry.first_blk,source_file_entry.type)){
+                        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        return -1;
+                    }
+                }
+                else
+                {
+                    if(!entryInit(tmp.file_name,source_file_entry.size,source_file_entry.first_blk,source_file_entry.type)){
+                        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        return -1;
+                    }
+                }
+            }
+        }
+
+        else if( dest_file_entry.type == TYPE_FILE )
+        {
+            if(source_file_entry.type == TYPE_DIR){
+                std::cout << "can't move a directoy to a file " << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
+            
+            else
+            {
+                if(desFlag)
+                {
+                    int currentBlock = dest_file_entry.first_blk;
+                    while (fat[currentBlock] != FAT_EOF ){
+                        int tmp = currentBlock;
+                        currentBlock = fat[currentBlock];
+                        fat[tmp] = FAT_FREE;
+                    }
+                    fat[currentBlock] = FAT_FREE;
+                    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+
+                    std::string fileName = dest_file_entry.file_name;
+                    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+                        if(cwd[i].file_name == fileName){
+                            std::fill_n(cwd[i].file_name, 56, '\0');
+                            break;
+                        }
+                    }
+                    disk.write(cwdBlock,(uint8_t*)&cwd);
+
+                    if(!entryInit(destPathArgs[destPathArgs.size() - 1],source_file_entry.size,source_file_entry.first_blk,source_file_entry.type)){
+                        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        return -1;
+                    }
+                }
+                
+                else
+                {
+                     if(!entryInit(sourcePathArgs[sourcePathArgs.size() - 1],source_file_entry.size,source_file_entry.first_blk,source_file_entry.type)){
+                        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        return -1;
+                    }
+                }
+                
+            } 
+        }
+        else
+        {
+            std::cout << "The directory " << dest_file_entry.file_name << " does not exist" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+
+        if(source_file_entry.type == TYPE_DIR){
+            disk.read(sourceFileBlock,(uint8_t*)&cwd);
+            cwd[1].first_blk = dest_file_entry.first_blk;
+        }
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return 0;
+        
     }
-    return 0;
 }
 
 // rm <filepath> removes / deletes the file <filepath>
