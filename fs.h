@@ -70,7 +70,7 @@ public:
     // in the current directory
     int mkdir(std::string dirpath);
     // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
-    int cd(std::string dirpath,bool privateFunc = false );
+    int cd(std::string dirpath ,bool privateFunc = false );
     // pwd prints the full path, i.e., from the root directory, to the current
     // directory, including the currect directory name
     int pwd();
