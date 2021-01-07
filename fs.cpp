@@ -1004,23 +1004,29 @@ int
 FS::pwd()
 {
     std::cout << "FS::pwd()\n";
+    int savedBlock = cwdBlock;
     std::string fullPath = "";
-    int childBlock = cwdBlock;
+    int childBlock = cwd[0].first_blk;;
     while(childBlock != ROOT_BLOCK ){
         std::string temp = "";
-        cd("..",true);
+        cd("..", true);
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
             if(cwd[i].first_blk == childBlock){
-                temp += cwd[0].file_name;
+                temp += cwd[i].file_name;
+                std::cout << cwd[i].file_name << std::endl;
                 temp += '/';
                 temp += fullPath;
                 fullPath = temp;
+                childBlock = cwd[0].first_blk;
                 break;
             }
         }
     }
-    
+    fullPath.pop_back();
     std::cout << '/' + fullPath << std::endl;
+
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
@@ -1029,6 +1035,50 @@ FS::pwd()
 int
 FS::chmod(std::string accessrights, std::string filepath)
 {
-    std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+    int savedBlock = cwdBlock;
+    std::string accessValuesString[7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
+    std::vector<std::string> pathArgs;
+    pathExtruder(filepath,pathArgs);
+    for(int i = 0; i != pathArgs.size() - 1; i++){
+        if(cd(pathArgs[i]) == -1){
+            std::cout << filepath << ": No such file or directory" << std::endl;
+            cwdBlock = savedBlock;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            return -1;
+        }
+    }
+    dir_entry fileEntry;
+    if(!fileExists(pathArgs[pathArgs.size() - 1],fileEntry)){
+        std::cout << filepath << ": No such file or directory" << std::endl;
+            cwdBlock = savedBlock;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+        return -1;
+    }
+    else{
+        std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+        std::string fileName = "";
+        fileName += fileEntry.file_name;
+        bool formatFound = false;
+        for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i++){
+            if(cwd[i].file_name == fileName){
+                for(int j = 0; j != 7; j++ ){
+                    if(accessrights == accessValuesString[j]){
+                        cwd[i].access_rights = j + 1 ;
+                        disk.write(cwdBlock,(uint8_t*)&cwd);
+                        formatFound = true;
+                        break;
+                    }
+                }
+                if(!formatFound){
+                    std::cout << "Invalid format, available formats: (--e, -w-, -we, r--, r-e, rw-, rwe) " << std::endl;
+                }
+
+                break;
+                
+            }
+        }
+    }
+    cwdBlock = savedBlock;
+    disk.read(savedBlock,(uint8_t*)&cwd);
     return 0;
 }
