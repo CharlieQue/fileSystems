@@ -165,6 +165,30 @@ FS::accessCheck(uint8_t access_rights, uint8_t requestedAccess){
     return true;
 }
 
+void
+FS::sizeUpdater(size_t sizeArgs){
+    int savedBlock = cwdBlock;
+    int childBlock = cwd[0].first_blk;
+    cwd[0].size += sizeArgs;
+    disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
+    while(childBlock != ROOT_BLOCK ){
+        cd("..", true);
+        cwd[0].size += sizeArgs;
+        for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+            if(cwd[i].first_blk == childBlock){
+                cwd[i].size += sizeArgs;
+                childBlock = cwd[0].first_blk;
+                disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
+                break;
+            }
+        }
+    }
+    cwd[0].size += sizeArgs;
+    disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
+
+}
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
@@ -272,11 +296,7 @@ FS::create(std::string filepath)
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     
     free(freeBlocks);
-    while(cwdBlock != ROOT_BLOCK){
-        cwd[0].size += line.size();
-        disk.write(cwdBlock,(uint8_t*)&cwd);
-        cd("..",true);
-    }
+    sizeUpdater(line.size());
     cwdBlock = savedBlock;
     disk.read(cwdBlock,(uint8_t*)&cwd);
     return 0;
@@ -496,6 +516,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
     }
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     free(freeBlocks);
+    sizeUpdater(source_file_entry.size);
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
     return 0;
@@ -524,6 +545,7 @@ FS::mv(std::string sourcepath, std::string destpath)
             return -1;
         }
     }
+    
     if(!accessCheck(cwd[0].access_rights,WRITE)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -532,7 +554,7 @@ FS::mv(std::string sourcepath, std::string destpath)
     }
     bool sourceFlag = fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry);
     int sourceFileBlock;
-    std::string fileName = dest_file_entry.file_name;
+    int sourceParentBlock = cwd[0].first_blk; //used for sizeUpdater()
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(cwd[i].file_name == sourcePathArgs[sourcePathArgs.size() - 1]){
             if(!accessCheck(cwd[i].access_rights,READ | WRITE)){
@@ -569,13 +591,14 @@ FS::mv(std::string sourcepath, std::string destpath)
                 return -1;
             }
         }
+        int destParentBlock = cwd[0].first_blk; //used for sizeUpdater()
         
         
         bool desFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
-        int destFileWD = dest_file_entry.first_blk;
         
         if ( dest_file_entry.type == TYPE_DIR ){
             cd( dest_file_entry.file_name, true );
+            // destParentBlock = cwd[0].first_blk;
             if(!accessCheck(cwd[0].access_rights,WRITE)){
                 std::cout << "Access denied" << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
@@ -681,11 +704,16 @@ FS::mv(std::string sourcepath, std::string destpath)
             disk.read(sourceFileBlock,(uint8_t*)&cwd);
             cwd[1].first_blk = dest_file_entry.first_blk;
         }
-        disk.read(savedBlock,(uint8_t*)&cwd);
-        cwdBlock = savedBlock;
-        return 0;
-        
+            disk.read(sourceParentBlock,(uint8_t*)&cwd);
+            sizeUpdater(-source_file_entry.size);
+            disk.read(destParentBlock,(uint8_t*)&cwd);
+            sizeUpdater(source_file_entry.size);
+
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return 0;
     }
+    
 }
 
 // rm <filepath> removes / deletes the file <filepath>
@@ -752,7 +780,7 @@ FS::rm(std::string filepath)
         disk.read(cwdBlock,(uint8_t*)&cwd);
         return -1;
     }
-    
+    sizeUpdater(-file_entry.size);
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
     return 0;
@@ -909,7 +937,7 @@ FS::append(std::string filepath1, std::string filepath2)
         }
     }
     disk.write(cwdBlock,(uint8_t*)&cwd);
-
+    sizeUpdater(source_file_entry.size);
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
     return 0;

@@ -37,6 +37,7 @@ private:
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
     void pathExtruder(std::string file_path, std::vector <std::string>& pathArgs);
     bool accessCheck(uint8_t access_rights, uint8_t requestedAccess);
+    void sizeUpdater(size_t sizaArgs);
 public:
     FS();
     ~FS();
