@@ -15,10 +15,35 @@ FS::~FS()
 {
 
 }
+void
+FS::pathExtruder(std::string file_path, std::vector <std::string>& pathArgs){
+    int startIndex = 0;
+    if(file_path[0] == '/'){
+        pathArgs.push_back("/");
+        startIndex = 1;
+    }
+    if ( file_path[0] == '.' && file_path[1] == '/'){
+        startIndex = 2;
+    }
+    std::string arg = "";
+    for(int i = startIndex ; i != file_path.length(); i++){
+        if(file_path[i] != '/'){
+            arg += file_path[i];
+        }
+        else
+        {
+            pathArgs.push_back(arg);
+            arg = "";
+        }
+        if(i == file_path.length() - 1){
+            pathArgs.push_back(arg);
+        }
+        
+    }
+}
 
-
-
-int* FS::findFreeBlocks(size_t fileSize){
+int* 
+FS::findFreeBlocks(size_t fileSize){
     int numOfBlocks;
     if(! (fileSize % BLOCK_SIZE == 0)){
         numOfBlocks = (fileSize/BLOCK_SIZE)+1;
@@ -80,86 +105,34 @@ FS::appendBlocks(uint16_t firstBlock,size_t fileSize){
 }
 
 bool 
-FS::fileExists(uint16_t & firstBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath,int & type ){
-    if(filepath[0] == '.' || filepath[0] == '/'){
-        std::string dirPath = filepath;
-        bool seperatorFound = false;
-        int i = 0;
-        while(!seperatorFound){
-            if(filepath[filepath.length()-i] != '/'){
-                i++;
-                dirPath[filepath.length()-i] = '\0';
-                
-            }
-            else
-            {
-                seperatorFound = true;
-            }
-                
-        }
-        if(cd(dirPath,true) == -1){
-            return -1;
-        }
-    }
+FS::fileExists(std::string filepath , dir_entry & fileEntry){
     bool fileExists = false;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(cwd[i].file_name == filepath){
             fileExists = true;
-            firstBlock = cwd[i].first_blk;
-            fileSize = cwd[i].size;
-            type = cwd[i].type;
+            fileEntry = cwd[i];
             break;
         }
     }
     if(!fileExists){
         return false;
     }
-
-    if(! (fileSize % BLOCK_SIZE == 0)){
-        numberOfBlocks = (fileSize / BLOCK_SIZE )+1;
-    }
-    else
-    {
-        numberOfBlocks = fileSize / BLOCK_SIZE;
-    }
-    
     return true;
 
 }
+
 bool
-FS::entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, int type,int access_rights){
-    if(filepath[0] == '.' || filepath[0] == '/'){
-        if(filepath == "." || filepath == ".."){
-            cd(filepath,true);
-        }
-        std::string dirPath = filepath;
-        bool seperatorFound = false;
-        int i = 0;
-        while(!seperatorFound){
-            if(filepath[filepath.length()-i] != '/'){
-                i++;
-                dirPath[filepath.length()-i] = '\0';
-                
-            }
-            else
-            {
-                seperatorFound = true;
-            }
-                
-        }
-        if(cd(dirPath,true) == -1){
-            return -1;
-        }
-    }
+FS::entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int type,int access_rights){
     dir_entry newEntry;
     std::fill_n(newEntry.file_name, 56, '\0');
-    for(int i = 0; i != filepath.length(); i ++){
-        newEntry.file_name[i]= filepath[i];
+    for(int i = 0 ; i < filename.length();i ++){
+        newEntry.file_name[i] = filename[i];
     }
     newEntry.first_blk = firstBlock;
     newEntry.size = fileSize;
     newEntry.type = type;
-    newEntry.access_rights = READ|WRITE;
+    newEntry.access_rights = access_rights;
+
     int freeEnteryIndex = -1;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(strlen(cwd[i].file_name) == 0){
@@ -167,15 +140,12 @@ FS::entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, int ty
             break;
         }
     }
-    
     if(freeEnteryIndex == -1){
         return false; // no enough space 
     }
-    
     cwd[freeEnteryIndex] = newEntry;
     disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
     return true;
-
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -212,14 +182,27 @@ FS::format()
 int
 FS::create(std::string filepath)
 {   
-    uint16_t optional1;
-    uint32_t optional2;
-    int optional3;
-    if(fileExists(optional1,optional2,optional3,filepath,optional3)){
-        std::cout << "the file " << filepath << " does exist" << std::endl;
+    std::cout << "FS::create(" << filepath << ")\n";
+    int savedBlock = cwdBlock;
+    std::vector<std::string> pathArgs;
+    pathExtruder(filepath, pathArgs);
+
+    for (int i = 0; i != pathArgs.size() - 1; i++){
+        if(cd(pathArgs[i],true) == -1){
+            std::cout << filepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    dir_entry file_entry;
+    if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+        std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " already exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    std::cout << "FS::create(" << filepath << ")\n";
+
     std::string line;
     char c;
     std::getline(std::cin, line);
@@ -231,9 +214,16 @@ FS::create(std::string filepath)
         std::cout << "The file can't be created, no enough space on disk" << std::endl;
         return -1;
     }
+    
+    if(!entryInit(pathArgs[pathArgs.size() - 1],line.length(),freeBlocks[0],TYPE_FILE)){
+        std::cout << "The maximum amount of files in the directory " << pathArgs[pathArgs.size() - 2] << " has been reached" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+
     int streamSize = 0;
     int freeBlocksIndex = 0;
-    
     while (linestream.get(c))
     {
         
@@ -256,15 +246,13 @@ FS::create(std::string filepath)
 
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     
-    entryInit(filepath,line.length(),freeBlocks[0],TYPE_FILE);
     free(freeBlocks);
-    int dirBlock = cwdBlock;
     while(cwdBlock != ROOT_BLOCK){
         cwd[0].size += line.size();
         disk.write(cwdBlock,(uint8_t*)&cwd);
         cd("..",true);
     }
-    cwdBlock = dirBlock;
+    cwdBlock = savedBlock;
     disk.read(cwdBlock,(uint8_t*)&cwd);
     return 0;
 }
@@ -274,20 +262,45 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
-    uint16_t firsBlock;
-    uint32_t fileSize;
-    int numberOfBlocks;
-    int type;
-    if(!fileExists(firsBlock,fileSize,numberOfBlocks,filepath,type)){
-        std::cout << "The file " << filepath << " do not exist!" << std::endl;
+    int savedBlock = cwdBlock;
+    std::vector<std::string> pathArgs;
+    pathExtruder(filepath, pathArgs);
+
+    for (int i = 0; i != pathArgs.size() - 1; i++){
+        if(cd(pathArgs[i],true) == -1){
+            std::cout << filepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    dir_entry file_entry;
+    if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+        std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    if(type == TYPE_DIR){
+
+
+    if(file_entry.type == TYPE_DIR){
         std::cout << filepath <<" is a directory." << std::endl;
         return -1;
     }
+    if(file_entry.size == 0){
+        std::cout << std::endl;
+        return 0;
+    }
+    int numberOfBlocks;
+    if(! (file_entry.size % BLOCK_SIZE == 0)){
+        numberOfBlocks = (file_entry.size / BLOCK_SIZE )+1;
+    }
+    else
+    {
+        numberOfBlocks = file_entry.size / BLOCK_SIZE;
+    }
     int fileBlocks[numberOfBlocks];
-    fileBlocks[0] = firsBlock;
+    fileBlocks[0] = file_entry.first_blk;
     
     for (int i = 1; i != numberOfBlocks; i++)
     {
@@ -298,20 +311,10 @@ FS::cat(std::string filepath)
         char fileInput[BLOCK_SIZE];
         disk.read(fileBlocks[i],(uint8_t*) & fileInput);
         std::cout << fileInput << std::flush;
-
     }
     std::cout << std::endl;
-    
-    // int lastBlock = firsBlock;
-    // std::cout << "LAST_BLOCK = " << lastBlock << std::endl;
-    // while(lastBlock != FAT_EOF){
-    //     std::cout << "LAST_BLOCK = " << lastBlock << std::endl;
-    //     char fileInput[BLOCK_SIZE];
-    //     disk.read(fat[lastBlock],(uint8_t*) & fileInput);
-    //     std::cout << fileInput << std::flush;
-    //     lastBlock = fat[lastBlock];
-    // }
-    // std::cout << std::endl;
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
@@ -346,40 +349,113 @@ FS::ls()
 int
 FS::cp(std::string sourcefilepath, std::string destfilepath)
 {
-    uint16_t firsBlock;
-    uint32_t fileSize;
-    int numberOfBlocks;
-    int type;
-    if(!fileExists(firsBlock,fileSize,numberOfBlocks,sourcefilepath,type)){
-        std::cout << "The file " << sourcefilepath << " do not exist!" << std::endl;
+    std::cout << "FS::cp(" << sourcefilepath << "," << destfilepath << ")\n";
+    int savedBlock = cwdBlock;
+    std::vector<std::string> sourcePathArgs;
+    std::vector<std::string> destPathArgs;
+    dir_entry source_file_entry;
+    dir_entry dest_file_entry;
+    pathExtruder(sourcefilepath, sourcePathArgs);
+    pathExtruder(destfilepath, destPathArgs);
+
+    for (int i = 0; i != sourcePathArgs.size() - 1; i++){
+        if(cd(sourcePathArgs[i],true) == -1){
+            std::cout << sourcefilepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    
+    if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry)){
+        std::cout << "The file " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    if(type == TYPE_DIR){
-        std::cout << sourcefilepath << "is a directory (not copied)" << std::endl;
+    
+    if(source_file_entry.type == TYPE_DIR){
+        std::cout << sourcefilepath << " is a directory (not copied)" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
     }
-    std::cout << "FS::cp(" << sourcefilepath << "," << destfilepath << ")\n";
+    
+    
+    int numberOfBlocks;
+    if(source_file_entry.size % BLOCK_SIZE != 0){
+        numberOfBlocks = (source_file_entry.size / BLOCK_SIZE )+1;
+    }
+    else if(source_file_entry.size == 0){
+        numberOfBlocks = 1;
+    }
+    else{
+        numberOfBlocks = source_file_entry.size / BLOCK_SIZE;
+    }
     int fileBlocks[numberOfBlocks];
-    fileBlocks[0] = firsBlock;
-    for (int i = 1; i != numberOfBlocks; i++)
-    {
+    fileBlocks[0] = source_file_entry.first_blk;
+    for (int i = 1; i != numberOfBlocks; i++){
         fileBlocks[i] = fat[fileBlocks[i-1]];
     }
-
     char fileInput[numberOfBlocks][BLOCK_SIZE];
     for(int i = 0; i != numberOfBlocks; i++){
         disk.read(fileBlocks[i],(uint8_t*) & fileInput[i]);
     }
-    int* freeBlocks = findFreeBlocks(fileSize);
-    if(freeBlocks == nullptr){
-        std::cout << "The file can't be copied, no enough space on disk" << std::endl;
+    
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
+    for (int i = 0; i != destPathArgs.size() - 1; i++){
+        if(cd(destPathArgs[i],true) == -1){
+            std::cout << destfilepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    
+    if(fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry)){
+        std::cout << "The file " << destPathArgs[destPathArgs.size() - 1] << " is already exist "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
+    
+    if(dest_file_entry.type == TYPE_DIR){
+        std::cout << destfilepath << "is a directory (not copied)" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+    int* freeBlocks = nullptr;
+    if(source_file_entry.size == 0){
+        freeBlocks = findFreeBlocks(1);
+    }
+    else{
+
+        freeBlocks = findFreeBlocks(source_file_entry.size);
+    }
+    
+    if(freeBlocks == nullptr){
+        std::cout << "The file can't be copied, no enough space on disk" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+
+    if(!entryInit(destPathArgs[destPathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
+        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+    
     for(int i = 0; i != numberOfBlocks; i++){
         disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
     }
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
-    entryInit(destfilepath,fileSize,firsBlock,TYPE_FILE);
     free(freeBlocks);
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
@@ -393,17 +469,17 @@ FS::mv(std::string sourcepath, std::string destpath)
     uint32_t sourceFileSize , destFileSize;
     int sourceFileNumberOfBlocks , destFileNumberOfBlocks;
     int sourceFileType , destFileType;
-    if(!fileExists(sourceFileFirsBlock,sourceFileSize,sourceFileNumberOfBlocks,sourcepath,sourceFileType)){
-        std::cout << "The file " << sourcepath << " do not exist!" << std::endl;
-        return -1;
-    }
+    // if(!fileExists(sourceFileFirsBlock,sourceFileSize,sourceFileNumberOfBlocks,sourcepath,sourceFileType)){
+    //     std::cout << "The file " << sourcepath << " do not exist!" << std::endl;
+    //     return -1;
+    // }
     int sourceFileWD = cwdBlock;
-    if(fileExists(destFileFirsBlock,destFileSize,destFileNumberOfBlocks,destpath,destFileType)){
-        if(destFileType == TYPE_FILE){
-            std::cout<< "The file " << destpath << " already exists, not allowed to have two files with the same name in the same directory." << std::endl;
-            return -1;
-        }
-    }
+    // if(fileExists(destFileFirsBlock,destFileSize,destFileNumberOfBlocks,destpath,destFileType)){
+    //     if(destFileType == TYPE_FILE){
+    //         std::cout<< "The file " << destpath << " already exists, not allowed to have two files with the same name in the same directory." << std::endl;
+    //         return -1;
+    //     }
+    // }
     int destFileWD = cwdBlock;
     bool condition1 = (sourceFileType == TYPE_FILE && destFileType == TYPE_FILE);
     bool condition2 = (sourceFileType == TYPE_FILE && destFileType == TYPE_DIR);
@@ -465,47 +541,58 @@ int
 FS::rm(std::string filepath)
 {
     std::cout << "FS::rm(" << filepath << ")\n";
-    uint16_t firsBlock;
-    uint32_t fileSize;
-    int numberOfBlocks;
-    int type;
-    if(!fileExists(firsBlock,fileSize,numberOfBlocks,filepath,type)){
-        std::cout << "The file " << filepath << " does not exist!" << std::endl;
+    int savedBlock = cwdBlock;
+    std::vector<std::string> pathArgs;
+    pathExtruder(filepath, pathArgs);
+
+    for (int i = 0; i != pathArgs.size() - 1; i++){
+        if(cd(pathArgs[i],true) == -1){
+            std::cout << filepath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    
+    dir_entry file_entry;
+    if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+        std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    if(type == TYPE_FILE){
-        int currentBlock = firsBlock;
+    
+    
+    if(file_entry.type == TYPE_FILE){
+        int currentBlock = file_entry.first_blk;
         while (fat[currentBlock] != FAT_EOF ){
             int tmp = currentBlock;
             currentBlock = fat[currentBlock];
             fat[tmp] = FAT_FREE;
         }
         fat[currentBlock] = FAT_FREE;
-        disk.write(FAT_BLOCK,(uint8_t*)&fat);
-        int seperatorIndex = 0;
-        std::string fileName = "";
-        if(filepath[0] == '.' || filepath[0] == '/'){
-            for(int i = 0; i != filepath.length(); i++){
-                if(filepath[i] == '/'){
-                    seperatorIndex = i;
-                }
-            }
-            fileName.append(&filepath[seperatorIndex +1]);
-        }
-        else{
-            fileName = filepath;
-        }
 
+        disk.write(FAT_BLOCK,(uint8_t*)&fat);
+
+        std::string fileName = file_entry.file_name;
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
-                if(cwd[i].file_name == fileName){
-                    dir_entry temp;
-                    cwd[i] = temp;
-                    break;
-                }
+            if(cwd[i].file_name == fileName){
+                std::fill_n(cwd[i].file_name, 56, '\0');
+                break;
             }
-        
+        }
         disk.write(cwdBlock,(uint8_t*)&cwd);
     }
+    else
+    {
+        std::cout << filepath << " is a directory!" << std::endl;
+        cwdBlock = savedBlock;
+        disk.read(cwdBlock,(uint8_t*)&cwd);
+        return -1;
+    }
+    
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
@@ -514,43 +601,107 @@ FS::rm(std::string filepath)
 int
 FS::append(std::string filepath1, std::string filepath2)
 {
-    uint16_t file1_FirstBlock;
-    uint32_t file1_FileSize;
-    int file1_NumberOfBlocks;
-    int type;
-    if(!fileExists(file1_FirstBlock,file1_FileSize,file1_NumberOfBlocks,filepath1,type)){
-        std::cout << "The file " << filepath1 << " do not exist!" << std::endl;
+    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+    int savedBlock = cwdBlock;
+    std::vector<std::string> sourcePathArgs;
+    std::vector<std::string> destPathArgs;
+    dir_entry source_file_entry;
+    dir_entry dest_file_entry;
+    pathExtruder(filepath1, sourcePathArgs);
+    pathExtruder(filepath2, destPathArgs);
+
+    for (int i = 0; i != sourcePathArgs.size() - 1; i++){
+        if(cd(sourcePathArgs[i],true) == -1){
+            std::cout << filepath1 << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    
+    if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry)){
+        std::cout << "The file " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    uint16_t file2_FirstBlock;
-    uint32_t file2_FileSize;
-    int file2_NumberOfBlocks;
-    if(!fileExists(file2_FirstBlock,file2_FileSize,file2_NumberOfBlocks,filepath2,type)){
-        std::cout << "The file "  << filepath2 << " do not exist!" << std::endl;
+    
+    if(source_file_entry.type == TYPE_DIR){
+        std::cout << filepath1 << " is a directory (can't be appened)" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
-    } 
-    int file2_lastBlock = file2_FirstBlock;
+    }
+
+    int file1_NumberOfBlocks;
+    if(source_file_entry.size % BLOCK_SIZE != 0){
+        file1_NumberOfBlocks = (source_file_entry.size / BLOCK_SIZE )+1;
+    }
+    else if(source_file_entry.size == 0){
+        return 0; //There is nothing to append!
+    }
+    else{
+        file1_NumberOfBlocks = source_file_entry.size / BLOCK_SIZE;
+    }
+
+
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
+    for (int i = 0; i != destPathArgs.size() - 1; i++){
+        if(cd(destPathArgs[i],true) == -1){
+            std::cout << filepath2 << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+    }
+    
+    if(!fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry)){
+        std::cout << "The file " << destPathArgs[destPathArgs.size() - 1] << " does not exist "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+    
+    if(dest_file_entry.type == TYPE_DIR){
+        std::cout << filepath2 << "is a directory " << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+    int file2_NumberOfBlocks;
+    if(dest_file_entry.size % BLOCK_SIZE != 0){
+        file2_NumberOfBlocks = (dest_file_entry.size / BLOCK_SIZE )+1;
+    }
+    else if (dest_file_entry.size == 0){
+        file2_NumberOfBlocks = 1;
+    }
+    else{
+        file2_NumberOfBlocks = source_file_entry.size / BLOCK_SIZE;
+    }
+
+    int file2_lastBlock = dest_file_entry.first_blk;
     while(fat[file2_lastBlock] != FAT_EOF){
         file2_lastBlock = fat[file2_lastBlock];
     }
-    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+    
 
     int requierdblocks = 0 ;
     int * newBlocks = nullptr;
-    if((file1_FileSize + file1_FileSize)/BLOCK_SIZE > file1_NumberOfBlocks){
+    if((source_file_entry.size + source_file_entry.size)/BLOCK_SIZE > file1_NumberOfBlocks){
         
-        if((file1_FileSize + file2_FileSize) % BLOCK_SIZE == 0){
-            requierdblocks = ((file1_FileSize + file2_FileSize) / BLOCK_SIZE) - file2_NumberOfBlocks;
+        if((source_file_entry.size + source_file_entry.size) % BLOCK_SIZE == 0){
+            requierdblocks = ((source_file_entry.size + source_file_entry.size) / BLOCK_SIZE) - file2_NumberOfBlocks;
         }
         else
         {
-            requierdblocks = ((file1_FileSize + file2_FileSize) / BLOCK_SIZE) + 1 - file2_NumberOfBlocks;
+            requierdblocks = ((source_file_entry.size + dest_file_entry.size) / BLOCK_SIZE) + 1 - file2_NumberOfBlocks;
         }
         
-        newBlocks = appendBlocks(file2_FirstBlock,requierdblocks * BLOCK_SIZE);
+        newBlocks = appendBlocks(dest_file_entry.first_blk,requierdblocks * BLOCK_SIZE);
     }
     char file1_Input[file1_NumberOfBlocks][BLOCK_SIZE];
-    int currentBlock = file1_FirstBlock;
+    int currentBlock = source_file_entry.first_blk;
     int i = 0;
     while(currentBlock != FAT_EOF){
         disk.read(currentBlock,(uint8_t*)&file1_Input[i]);
@@ -559,7 +710,7 @@ FS::append(std::string filepath1, std::string filepath2)
     }
     char file2[BLOCK_SIZE];
     disk.read(file2_lastBlock,(uint8_t*)&file2);
-    int file2_startIndex = (file2_FileSize % BLOCK_SIZE) ;
+    int file2_startIndex = (dest_file_entry.size % BLOCK_SIZE) ;
     int file1_dataIndex = 0;
     
     int file1_blockIndex = 0;
@@ -573,14 +724,20 @@ FS::append(std::string filepath1, std::string filepath2)
             file1_dataIndex++;
         }
         file2_startIndex = 0;
-        std::cout << file2_lastBlock << std::endl;
         disk.write(file2_lastBlock,(uint8_t*)&file2);
         file2_lastBlock = fat[file2_lastBlock];
-
     }
-    
+    std::string fileName = dest_file_entry.file_name;
+    for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
+        if(cwd[i].file_name == fileName){
+            cwd[i].size += source_file_entry.size;
+            break;
+        }
+    }
+    disk.write(cwdBlock,(uint8_t*)&cwd);
 
-
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
@@ -590,145 +747,175 @@ int
 FS::mkdir(std::string dirpath)
 {
     std::cout << "FS::mkdir(" << dirpath << ")\n";
-    uint16_t optional1;
-    uint32_t optional2;
-    int optional3;
-    int type;
-    if(fileExists(optional1,optional2,optional3,dirpath,type)){
-        if(type == TYPE_DIR){
-            std::cout << "The directory " << dirpath << " does exist "<< std::endl;
+    int savedBlock = cwdBlock;
+    dir_entry parentDir = cwd[0];
+    std::vector<std::string> pathArgs;
+    pathExtruder(dirpath, pathArgs);
+
+
+    for (int i = 0; i != pathArgs.size() - 1; i++){
+        if(cd(pathArgs[i],true) == -1){
+            std::cout << dirpath << " No such file or directory" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
         }
-        else{
-            std::cout << "A file with the name " << dirpath << " alrady exists, try another name" << std::endl;
-        }
+    }
+    dir_entry file_entry;
+    if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+        std::cout << "The directory " << pathArgs[pathArgs.size() - 1] << " already exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
-    else{
-        int * newBlock = findFreeBlocks(BLOCK_SIZE);
-        dir_entry newDir[BLOCK_SIZE / sizeof(dir_entry)];
-        dir_entry self;
-        std::fill_n(self.file_name,56,'\0');
-        self.file_name[0] = '.';
-        self.first_blk = newBlock[0];
-        self.size = 0;
-        self.type = TYPE_DIR;
-        self.access_rights = WRITE|READ;
-        newDir[0] = self;
-        dir_entry parentDir = cwd[0];
-        std::fill_n(parentDir.file_name,56,'\0');
-        parentDir.file_name[0] = '.';
-        parentDir.file_name[1] = '.';
-        newDir[1] = parentDir;
-        disk.write(newBlock[0],(uint8_t*)&newDir);
-        entryInit(dirpath,0,newBlock[0],TYPE_DIR,READ|WRITE);
-        
+
+    int * newBlock = findFreeBlocks(BLOCK_SIZE);
+    dir_entry newDir[(BLOCK_SIZE / sizeof(dir_entry)) + 1 ];
+    dir_entry self;
+    std::fill_n(self.file_name,56,'\0');
+    std::fill_n(newDir, (BLOCK_SIZE / sizeof(dir_entry)) + 1, self);
+    self.file_name[0] = '.';
+    self.first_blk = newBlock[0];
+    self.size = 0;
+    self.type = TYPE_DIR;
+    self.access_rights = WRITE|READ;
+    newDir[0] = self;
+    
+    std::fill_n(parentDir.file_name,56,'\0');
+    parentDir.file_name[0] = '.';
+    parentDir.file_name[1] = '.';
+    parentDir.first_blk = cwd[0].first_blk;
+    newDir[1] = parentDir;
+    disk.write(newBlock[0],(uint8_t*)&newDir);
+
+    
+    if(!entryInit(pathArgs[pathArgs.size() - 1],0,newBlock[0],TYPE_DIR,READ|WRITE)){
+        std::cout << "The directory " << pathArgs[pathArgs.size() - 2] << " has no enough space\n";
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
     }
+    
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
     return 0;
 }
 
 // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
+
 int
 FS::cd(std::string dirpath,bool privateFunc  )
 {
+    
     if(!privateFunc){
         std::cout << "FS::cd(" << dirpath << ")\n";
     }
-    if(dirpath == "." || dirpath == ".."){
-        if(dirpath == "."){
-            return 0;
-        }
-        else
-        {
-            std::string temp = "";
-            temp += cwd[1].file_name[0];
-            temp += cwd[1].file_name[1];
-            if(temp != ".."){ // the root is the current working directory. 
-                
-            }
-            else
-            {
-                disk.read(cwd[1].first_blk,(uint8_t*)&cwd);
-                cwdBlock = cwd[0].first_blk;
-            }
-            return 0;
-            
-        }
-        
-    }
-    if(dirpath == "/" ){
+    std::vector<std::string> pathArgs;
+    pathExtruder(dirpath,pathArgs);
+
+    if(pathArgs[0] == "/"){
         disk.read(ROOT_BLOCK,(uint8_t*)&cwd);
         cwdBlock = ROOT_BLOCK;
-        return 0;
-    }
-    std::string pathType = "";
-    pathType += dirpath[0];
-    pathType += dirpath[1];
-    if(dirpath[0] == '/'){
-        disk.read(ROOT_BLOCK,(uint8_t*)&cwd);
-        std::string relativePath = "./";
-        for(int i = 1; i != dirpath.length(); i++){
-            relativePath += dirpath[i];
+        if(pathArgs.size() == 1){
+            return 0;
         }
-        cd(relativePath, true);
-    }
-    else if(pathType == ".."){
-        cd("..",true);
-        std::string relativePath = "";
-        relativePath.append(&dirpath[1]);
-        cd(relativePath,true);
-    }
-    else if (pathType == "./") {
-        std::string relativePath = "";
-        int pathIndex = 2;
-        char lastChar;
-        while(lastChar != '/' && pathIndex != dirpath.length()){
-            relativePath += dirpath[pathIndex];
-            pathIndex ++;
-            lastChar = dirpath[pathIndex];
+        std::string nextPath = "";
+        for (int i = 1; i < pathArgs.size(); i++){
+            nextPath += pathArgs[i];
+            nextPath += '/';
         }
-        if(lastChar == '/'){
-            uint16_t firstBlock;
-            uint32_t size;
-            int type;
-            int numberOfblocks;
-            if(fileExists(firstBlock,size,numberOfblocks,relativePath,type)){
-                std::string newPath = ".";
-                for(int i = relativePath.length() + 2; i != dirpath.length(); i++){
-                    newPath += dirpath[i];
-                }
-                if(type == TYPE_DIR){
-                    disk.read(firstBlock,(uint8_t*)&cwd);
-                    cwdBlock = firstBlock;
-                    cd(newPath,true);
-                }                
+        nextPath.pop_back();
+        std::cout << "next path " << nextPath << "\n";
+
+        if(cd(nextPath, true) == -1){
+            if(!privateFunc){
+                std::cout << dirpath << " No such file or directory" << std::endl;
+            }         
+            return -1;
+        }
+    }
+
+    else if(pathArgs[0] == ".."){
+        if(cwdBlock != ROOT_BLOCK){
+            disk.read(cwd[1].first_blk,(uint8_t*)&cwd);
+            cwdBlock = cwd[0].first_blk;
+            if(pathArgs.size() == 1){
+                return 0;
             }
-        }
-        else
-        {
-            uint16_t firstBlock;
-            uint32_t size;
-            int type;
-            int numberOfblocks;
-            if(fileExists(firstBlock,size,numberOfblocks,relativePath,type)){
-                std::string newPath = ".";
-                for(int i = relativePath.length() + 2; i != dirpath.length(); i++){
-                    newPath += dirpath[i];
-                }
-                if(type == TYPE_DIR){
-                    disk.read(firstBlock,(uint8_t*)&cwd);
-                    cwdBlock = firstBlock;
-                }
+            std::string nextPath = "";
+            for (int i = 1; i < pathArgs.size(); i++){
+                nextPath += pathArgs[i];
+                nextPath += '/';
             }
-            else{
+            nextPath.pop_back();
+            if(cd(nextPath, true) == -1){
                 if(!privateFunc){
-                    std::cout << dirpath << "No such file or directory" << std::endl;
+                    std::cout << dirpath << " No such file or directory" << std::endl;
                 }
                 return -1;
             }
         }
-        
+        else
+        {
+            if(pathArgs.size() == 1){
+                return 0;
+            }
+            std::string nextPath = "";
+            for (int i = 1; i < pathArgs.size(); i++){
+                nextPath += pathArgs[i];
+                nextPath += '/';
+            }
+            nextPath.pop_back();
+            if(cd(nextPath, true) == -1){
+                if(!privateFunc){
+                    std::cout << dirpath << " No such file or directory" << std::endl;
+                }         
+            return -1;
+            }
+        }
     }
-    
+
+    else
+    {
+        dir_entry dirEntry;
+
+        if(!fileExists(pathArgs[0],dirEntry)){
+            if(!privateFunc){
+                std::cout << dirpath << " No such file or directory" << std::endl;
+            }
+            return -1;
+        }
+        else
+        {
+            if(dirEntry.type != TYPE_FILE){
+                disk.read(dirEntry.first_blk,(uint8_t*)&cwd);
+                cwdBlock = dirEntry.first_blk;
+                if(pathArgs.size() == 1){
+                    return 0;
+                }
+                std::string nextPath = "";
+                for (int i = 1; i < pathArgs.size(); i++){
+                    nextPath += pathArgs[i];
+                    nextPath += '/';
+                }
+                nextPath.pop_back();
+
+                if(cd(nextPath, true) == -1){
+                    if(!privateFunc){
+                        std::cout << dirpath << " No such file or directory" << std::endl;
+                    }
+                    return -1;
+                }
+            }
+            else
+            {
+                if(!privateFunc){
+                    std::cout << dirpath <<": Not a directory" << std::endl;
+                }
+                return -1;
+            }
+        }
+    }
     return 0;
 }
 

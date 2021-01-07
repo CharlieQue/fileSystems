@@ -33,10 +33,11 @@ private:
     int16_t fat[BLOCK_SIZE/2];
     dir_entry cwd[(BLOCK_SIZE / sizeof(dir_entry)) +1];
     int cwdBlock;
-    bool fileExists(uint16_t & firsBlock, uint32_t & fileSize, int & numberOfBlocks,std::string filepath, int &type );
-    bool entryInit(std::string filepath, size_t fileSize, uint16_t firstBlock, int type,int access_rights = WRITE | READ );
+    int a(std::string dirpath,bool privateFunc  );
+    bool fileExists(std::string filepath, dir_entry & fileEntry);
+    bool entryInit(std::string dirpath, size_t fileSize, uint16_t firstBlock, int type,int access_rights = WRITE | READ );
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
-
+    void pathExtruder(std::string file_path, std::vector <std::string>& pathArgs);
     
 public:
     FS();
