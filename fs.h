@@ -36,6 +36,7 @@ private:
     bool entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int type,int access_rights = READ | WRITE);
     int* appendBlocks(uint16_t firstBlock,size_t fileSize);
     void pathExtruder(std::string file_path, std::vector <std::string>& pathArgs);
+    bool accessCheck(uint8_t access_rights, uint8_t requestedAccess);
 public:
     FS();
     ~FS();

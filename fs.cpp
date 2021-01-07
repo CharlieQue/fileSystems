@@ -15,6 +15,8 @@ FS::~FS()
 {
 
 }
+
+
 void
 FS::pathExtruder(std::string file_path, std::vector <std::string>& pathArgs){
     int startIndex = 0;
@@ -148,6 +150,21 @@ FS::entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int ty
     return true;
 }
 
+bool 
+FS::accessCheck(uint8_t access_rights, uint8_t requestedAccess){
+    std::string accessValues[7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
+    std::string requestedAccessString = accessValues[requestedAccess - 1];
+    std::string accessValuesString = accessValues[access_rights - 1];
+    for(int i = 0; i < 3; i++){
+        if (requestedAccessString[i] != '-'){
+            if(requestedAccessString[i] != accessValuesString[i]){
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
@@ -195,6 +212,12 @@ FS::create(std::string filepath)
             return -1;
         }
     }
+    if(!accessCheck(cwd[0].access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     dir_entry file_entry;
     if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
         std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " already exists "<< std::endl;
@@ -212,6 +235,8 @@ FS::create(std::string filepath)
     int* freeBlocks = findFreeBlocks(line.size());
     if(freeBlocks == nullptr){
         std::cout << "The file can't be created, no enough space on disk" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
         return -1;
     }
     
@@ -277,6 +302,12 @@ FS::cat(std::string filepath)
     dir_entry file_entry;
     if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
         std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " does not exists "<< std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+    if(!accessCheck(file_entry.access_rights,READ)){
+        std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
@@ -373,6 +404,12 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         cwdBlock = savedBlock;
         return -1;
     }
+    if(!accessCheck(source_file_entry.access_rights,READ)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     
     if(source_file_entry.type == TYPE_DIR){
         std::cout << sourcefilepath << " is a directory (not copied)" << std::endl;
@@ -412,7 +449,12 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
             return -1;
         }
     }
-    
+    if(!accessCheck(cwd[0].access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     if(fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry)){
         std::cout << "The file " << destPathArgs[destPathArgs.size() - 1] << " is already exist "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -482,11 +524,23 @@ FS::mv(std::string sourcepath, std::string destpath)
             return -1;
         }
     }
+    if(!accessCheck(cwd[0].access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     bool sourceFlag = fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry);
     int sourceFileBlock;
     std::string fileName = dest_file_entry.file_name;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(cwd[i].file_name == sourcePathArgs[sourcePathArgs.size() - 1]){
+            if(!accessCheck(cwd[i].access_rights,READ | WRITE)){
+                std::cout << "Access denied" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
             sourceFileBlock = cwd[i].first_blk; 
             std::fill_n(cwd[i].file_name, 56, '\0');
             break;
@@ -516,11 +570,18 @@ FS::mv(std::string sourcepath, std::string destpath)
             }
         }
         
+        
         bool desFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
         int destFileWD = dest_file_entry.first_blk;
         
         if ( dest_file_entry.type == TYPE_DIR ){
             cd( dest_file_entry.file_name, true );
+            if(!accessCheck(cwd[0].access_rights,WRITE)){
+                std::cout << "Access denied" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
             if(desFlag){
                 dir_entry tmp;
                 if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], tmp)){
@@ -545,6 +606,12 @@ FS::mv(std::string sourcepath, std::string destpath)
 
         else if( dest_file_entry.type == TYPE_FILE )
         {
+            if(!accessCheck(cwd[0].access_rights,WRITE)){
+                std::cout << "Access denied" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
             if(source_file_entry.type == TYPE_DIR){
                 std::cout << "can't move a directoy to a file " << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
@@ -556,6 +623,12 @@ FS::mv(std::string sourcepath, std::string destpath)
             {
                 if(desFlag)
                 {
+                    if(!accessCheck(dest_file_entry.access_rights,WRITE)){
+                        std::cout << "Access denied" << std::endl;
+                        disk.read(savedBlock,(uint8_t*)&cwd);
+                        cwdBlock = savedBlock;
+                        return -1;
+                    }
                     int currentBlock = dest_file_entry.first_blk;
                     while (fat[currentBlock] != FAT_EOF ){
                         int tmp = currentBlock;
@@ -632,7 +705,12 @@ FS::rm(std::string filepath)
             return -1;
         }
     }
-    
+    if(!accessCheck(cwd[0].access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     dir_entry file_entry;
     if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
         std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " does not exists "<< std::endl;
@@ -640,7 +718,12 @@ FS::rm(std::string filepath)
         cwdBlock = savedBlock;
         return -1;
     }
-    
+    if(!accessCheck(file_entry.access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     
     if(file_entry.type == TYPE_FILE){
         int currentBlock = file_entry.first_blk;
@@ -704,6 +787,12 @@ FS::append(std::string filepath1, std::string filepath2)
         cwdBlock = savedBlock;
         return -1;
     }
+    if(!accessCheck(source_file_entry.access_rights,READ)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
     
     if(source_file_entry.type == TYPE_DIR){
         std::cout << filepath1 << " is a directory (can't be appened)" << std::endl;
@@ -741,7 +830,13 @@ FS::append(std::string filepath1, std::string filepath2)
         cwdBlock = savedBlock;
         return -1;
     }
-    
+    if(!accessCheck(dest_file_entry.access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+
     if(dest_file_entry.type == TYPE_DIR){
         std::cout << filepath2 << "is a directory " << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -840,6 +935,13 @@ FS::mkdir(std::string dirpath)
             return -1;
         }
     }
+    if(!accessCheck(cwd[0].access_rights,WRITE)){
+        std::cout << "Access denied" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return -1;
+    }
+
     dir_entry file_entry;
     if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
         std::cout << "The directory " << pathArgs[pathArgs.size() - 1] << " already exists "<< std::endl;
@@ -1013,7 +1115,6 @@ FS::pwd()
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
             if(cwd[i].first_blk == childBlock){
                 temp += cwd[i].file_name;
-                std::cout << cwd[i].file_name << std::endl;
                 temp += '/';
                 temp += fullPath;
                 fullPath = temp;
@@ -1063,8 +1164,14 @@ FS::chmod(std::string accessrights, std::string filepath)
             if(cwd[i].file_name == fileName){
                 for(int j = 0; j != 7; j++ ){
                     if(accessrights == accessValuesString[j]){
-                        cwd[i].access_rights = j + 1 ;
+                        cwd[i].access_rights = j + 1;
                         disk.write(cwdBlock,(uint8_t*)&cwd);
+                        if(fileEntry.type == TYPE_DIR){
+                            cd(fileEntry.file_name, true);
+                            cwd[0].access_rights = j + 1;
+                            disk.write(cwdBlock,(uint8_t*)&cwd);
+                            cd("..", true);
+                        }
                         formatFound = true;
                         break;
                     }
