@@ -206,7 +206,7 @@ int
 FS::format()
 {
     std::cout << "FS::format()\n";
-    /* loop sets all disk block in the fat table exept the root directory and the fat blocks*/
+    /* loop sets all disk block in the fat table to free block i.e 0 exept the root directory and the fat blocks*/
     for(unsigned i = 0; i != (BLOCK_SIZE / 2); i++){
         if(i == ROOT_BLOCK){
             fat[ROOT_BLOCK] = FAT_EOF;
@@ -330,11 +330,13 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
+    
     std::cout << "FS::cat(" << filepath << ")\n";
     int savedBlock = cwdBlock;
     std::vector<std::string> pathArgs;
     pathExtruder(filepath, pathArgs);
 
+    /*loop and check if the directory path is approachable*/
     for (int i = 0; i != pathArgs.size() - 1; i++){
         if(cd(pathArgs[i],true) == -1){
             std::cout << filepath << " No such file or directory" << std::endl;
@@ -344,12 +346,13 @@ FS::cat(std::string filepath)
         }
     }
     dir_entry file_entry;
-    if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+    if(!fileExists(pathArgs[pathArgs.size() - 1], file_entry)){ //chacks if the file exsist in the path directory
         std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " does not exists "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
+    //check if the process is allowed to read from the requested file
     if(!accessCheck(file_entry.access_rights,READ)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -357,16 +360,18 @@ FS::cat(std::string filepath)
         return -1;
     }
 
-
-    if(file_entry.type == TYPE_DIR){
+    if(file_entry.type == TYPE_DIR){//not allowed to prints out directories
         std::cout << filepath <<" is a directory." << std::endl;
         return -1;
     }
+    /* if the file's size is 0 so there is no 
+    need go furthur in the process. just print and empty line
+    */
     if(file_entry.size == 0){
         std::cout << std::endl;
         return 0;
     }
-    int numberOfBlocks;
+    int numberOfBlocks; //variable to store the number of blocks the file requires
     if(! (file_entry.size % BLOCK_SIZE == 0)){
         numberOfBlocks = (file_entry.size / BLOCK_SIZE )+1;
     }
@@ -374,20 +379,24 @@ FS::cat(std::string filepath)
     {
         numberOfBlocks = file_entry.size / BLOCK_SIZE;
     }
+    /*This array stored which disk's block 
+    the disk.read() func should read from.*/
     int fileBlocks[numberOfBlocks];
     fileBlocks[0] = file_entry.first_blk;
-    
+    //loop to store the file disk's blocks based on the FAT 
     for (int i = 1; i != numberOfBlocks; i++)
     {
         fileBlocks[i] = fat[fileBlocks[i-1]];
     }
 
+    /*loop to read the disk's blocks and prints out the data*/
     for(int i = 0; i != numberOfBlocks; i++){
         char fileInput[BLOCK_SIZE];
         disk.read(fileBlocks[i],(uint8_t*) & fileInput);
         std::cout << fileInput << std::flush;
     }
     std::cout << std::endl;
+    /*maps to the working directoy that the cat command has been called from*/
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
     return 0;
@@ -398,9 +407,11 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    /*An array to store the access rights as a strings*/
     std::string accessArray [7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
 
     std::cout << std::setw(25) << std::left << "Filename" << std::setw(25) << std::left  <<  "Type" << std::setw(25) << std::left << "Access rights" << std::setw(25) << std::left << "Size" << std::endl;
+    //loops through the whole current working directory
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(strlen(cwd[i].file_name) != 0 && (cwd[i].file_name[0] != '.')){
             std::cout << std::setw(25) << std::left << cwd[i].file_name;
@@ -425,15 +436,19 @@ int
 FS::cp(std::string sourcefilepath, std::string destfilepath)
 {
     std::cout << "FS::cp(" << sourcefilepath << "," << destfilepath << ")\n";
-    int savedBlock = cwdBlock;
+    /* A variable to store the current working 
+    directory block. Used to maps again to the 
+    same directoy after the cd() func calls. */
+    int savedBlock = cwdBlock; 
 
     std::vector<std::string> sourcePathArgs;
     std::vector<std::string> destPathArgs;
-    dir_entry source_file_entry;
-    dir_entry dest_file_entry;
+    dir_entry source_file_entry; //A variable to store the information about the source file directory entry
+    dir_entry dest_file_entry;//A variable to store the information about the destination file directory entry
     pathExtruder(sourcefilepath, sourcePathArgs);
     pathExtruder(destfilepath, destPathArgs);
 
+    /* First map to the source file parent directory*/
     for (int i = 0; i != sourcePathArgs.size() - 1; i++){
         if(cd(sourcePathArgs[i],true) == -1){
             std::cout << sourcefilepath << " No such file or directory" << std::endl;
@@ -443,20 +458,21 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         }
     }
 
-    
+    /* Check if the file actually exists*/
     if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry)){
         std::cout << "The file " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
+    /* Check if the file have a read access */
     if(!accessCheck(source_file_entry.access_rights,READ)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
-    
+    /* if the file is a directory, can't be copied */
     if(source_file_entry.type == TYPE_DIR){
         std::cout << sourcefilepath << " is a directory (not copied)" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -464,6 +480,8 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         return -1;
     }
 
+    /*numberOfBlocks stores how many blocks the source file
+    require to be copied*/
     int numberOfBlocks;
     if(source_file_entry.size % BLOCK_SIZE != 0){
         numberOfBlocks = (source_file_entry.size / BLOCK_SIZE )+1;
@@ -474,18 +492,22 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
     else{
         numberOfBlocks = source_file_entry.size / BLOCK_SIZE;
     }
+    /*This array stored which disk's blocks 
+    the disk.read() func should read from.*/
     int fileBlocks[numberOfBlocks];
     fileBlocks[0] = source_file_entry.first_blk;
     for (int i = 1; i != numberOfBlocks; i++){
         fileBlocks[i] = fat[fileBlocks[i-1]];
     }
+    /*fileInput stores the source file data*/
     char fileInput[numberOfBlocks][BLOCK_SIZE];
     for(int i = 0; i != numberOfBlocks; i++){
-        disk.read(fileBlocks[i],(uint8_t*) & fileInput[i]);
+        disk.read(fileBlocks[i],(uint8_t*) & fileInput[i]);//put the source file data in the fileInput array
     }
+
     int* freeBlocks = nullptr;
     if(source_file_entry.size == 0){
-        freeBlocks = findFreeBlocks(1);
+        freeBlocks = findFreeBlocks(1);//calls findFreeBlocks() and checks if the there is eough space on the disk
     }
     else{
 
@@ -501,7 +523,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
     
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
-    if(destPathArgs.size() > 1){
+    if(destPathArgs.size() > 1){ 
         for (int i = 0; i != destPathArgs.size() - 1; i++){
             if(cd(destPathArgs[i],true) == -1){
                 std::cout << destfilepath << " No such file or directory" << std::endl;
@@ -512,32 +534,39 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         }
     }
     
-    
+    /*if the destination path is only one directory
+    then the source file should be copied to the currend
+    working directory with the destination path name.
+    Note: if the destination path exists in the current
+    working directory and it is a directory then the source
+    file get copied into this directory */
 
     bool destFileFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
-    if(!destFileFlag){
-        std::string fileName = destPathArgs[destPathArgs.size() - 1];;
+    if(!destFileFlag){//if the given destination file name does not exist
+        std::string fileName = destPathArgs[destPathArgs.size() - 1];
         
-        if(destPathArgs.size() == 1 && destPathArgs[0] == "/"){
+        if(destPathArgs.size() == 1 && destPathArgs[0] == "/"){//special case when we want to copy a file to the root directory
             fileName = sourcePathArgs[sourcePathArgs.size() - 1];
         }
-        if(!accessCheck(cwd[0].access_rights,WRITE)){
+
+        if(!accessCheck(cwd[0].access_rights,WRITE)){//checks if the working directory have write access right
             std::cout << "Access denied" << std::endl;
             disk.read(savedBlock,(uint8_t*)&cwd);
             cwdBlock = savedBlock;
             return -1;
         }
         dir_entry temp;
-        if(fileExists(fileName, temp)){
+        if(fileExists(fileName, temp)){//chack if the file name already exists 
             fileName += " (copied)";
         }
+        //add the file directoy entry into the destination directoy
         if(!entryInit(fileName,source_file_entry.size,freeBlocks[0],TYPE_FILE)){
             std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
             disk.read(savedBlock,(uint8_t*)&cwd);
             cwdBlock = savedBlock;
             return -1;
         }
-        
+        //write the file data to the disk
         for(int i = 0; i != numberOfBlocks; i++){
             disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
         }
@@ -546,14 +575,15 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
     }
     else
     {
-        if(dest_file_entry.type == TYPE_DIR){
+        if(dest_file_entry.type == TYPE_DIR){//if the destination file is an directory, map into the directory
             cd(dest_file_entry.file_name,true);
-            if(!accessCheck(cwd[0].access_rights,WRITE)){
+            if(!accessCheck(cwd[0].access_rights,WRITE)){//chack the access right on write
                 std::cout << "Access denied" << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
                 cwdBlock = savedBlock;
                 return -1;
             }
+            //add the file directoy entry into the destination directoy
             if(!entryInit(sourcePathArgs[sourcePathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
                 std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
                 disk.read(savedBlock,(uint8_t*)&cwd);
@@ -568,6 +598,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         }
         else
         {
+            //add the file directoy entry into the destination directoy as a copy virsion
             std::string newFileName = destPathArgs[destPathArgs.size() - 1];
             newFileName += " (copied)";
             if(!entryInit(newFileName,source_file_entry.size,freeBlocks[0],TYPE_FILE)){
@@ -607,6 +638,7 @@ FS::mv(std::string sourcepath, std::string destpath)
     pathExtruder(sourcepath, sourcePathArgs);
     pathExtruder(destpath, destPathArgs);
 
+    //first map into the source parent directory
     if(sourcePathArgs.size() > 1){
         for (int i = 0; i != sourcePathArgs.size() - 1; i++){
             if(cd(sourcePathArgs[i],true) == -1){
@@ -617,7 +649,7 @@ FS::mv(std::string sourcepath, std::string destpath)
             }
         }
     }
-    
+    //checks if the process is allowed to edit in the parent directory
     if(!accessCheck(cwd[0].access_rights,WRITE)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -629,14 +661,14 @@ FS::mv(std::string sourcepath, std::string destpath)
     int sourceParentBlock = cwd[0].first_blk; //used for sizeUpdater()
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(cwd[i].file_name == sourcePathArgs[sourcePathArgs.size() - 1]){
-            if(!accessCheck(cwd[i].access_rights,READ | WRITE)){
+            if(!accessCheck(cwd[i].access_rights,READ | WRITE)){//checks the rights of the target file or directoy 
                 std::cout << "Access denied" << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
                 cwdBlock = savedBlock;
                 return -1;
             }
             sourceFileBlock = cwd[i].first_blk; 
-            std::fill_n(cwd[i].file_name, 56, '\0');
+            std::fill_n(cwd[i].file_name, 56, '\0');//removes the directory entry from the parent directory.
             break;
         }
     }
@@ -654,11 +686,11 @@ FS::mv(std::string sourcepath, std::string destpath)
     else
     {
         disk.read(sourceParentBlock,(uint8_t*)&cwd);
-        sizeUpdater(-source_file_entry.size);
+        sizeUpdater(-source_file_entry.size);//update the size for the source parent directoy
 
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
-        if(destPathArgs.size() > 1){
+        if(destPathArgs.size() > 1){//maps to the destination file parent directory
             for (int i = 0; i != destPathArgs.size() - 1; i++){
                 if(cd(destPathArgs[i],true) == -1){
                     std::cout << destpath << " No such file or directory" << std::endl;
@@ -673,10 +705,9 @@ FS::mv(std::string sourcepath, std::string destpath)
         
         
         bool desFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
-        
+        //if the destination target is a directoy so we move the source tagret into this directory
         if ( dest_file_entry.type == TYPE_DIR ){
             cd( dest_file_entry.file_name, true );
-            // destParentBlock = cwd[0].first_blk;
             if(!accessCheck(cwd[0].access_rights,WRITE)){
                 std::cout << "Access denied" << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
@@ -713,14 +744,14 @@ FS::mv(std::string sourcepath, std::string destpath)
                 cwdBlock = savedBlock;
                 return -1;
             }
-            if(source_file_entry.type == TYPE_DIR){
+            if(source_file_entry.type == TYPE_DIR){//if we tried to move a directory to a file
                 std::cout << "can't move a directoy to a file " << std::endl;
                 disk.read(savedBlock,(uint8_t*)&cwd);
                 cwdBlock = savedBlock;
                 return -1;
             }
             
-            else
+            else //moving file to a file
             {
                 if(desFlag)
                 {
@@ -803,6 +834,7 @@ FS::rm(std::string filepath)
     std::vector<std::string> pathArgs;
     pathExtruder(filepath, pathArgs);
 
+    //maps to the given path
     for (int i = 0; i != pathArgs.size() - 1; i++){
         if(cd(pathArgs[i],true) == -1){
             std::cout << filepath << " No such file or directory" << std::endl;
@@ -811,7 +843,8 @@ FS::rm(std::string filepath)
             return -1;
         }
     }
-    if(!accessCheck(cwd[0].access_rights,WRITE)){
+
+    if(!accessCheck(cwd[0].access_rights,WRITE)){//checks if it is allowed to do changes on the parent directory
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
@@ -824,7 +857,7 @@ FS::rm(std::string filepath)
         cwdBlock = savedBlock;
         return -1;
     }
-    if(!accessCheck(file_entry.access_rights,WRITE)){
+    if(!accessCheck(file_entry.access_rights,WRITE)){//checks if it's allowed to remove the target file
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
@@ -832,7 +865,10 @@ FS::rm(std::string filepath)
     }
     
     if(file_entry.type == TYPE_FILE){
+        //currentBlock holds the value of the starting block of the taret file
         int currentBlock = file_entry.first_blk;
+
+        //free the file's FAT blocks
         while (fat[currentBlock] != FAT_EOF ){
             int tmp = currentBlock;
             currentBlock = fat[currentBlock];
@@ -843,6 +879,7 @@ FS::rm(std::string filepath)
         disk.write(FAT_BLOCK,(uint8_t*)&fat);
 
         std::string fileName = file_entry.file_name;
+        //this loop remove the file directory entry from the tparent directory
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
             if(cwd[i].file_name == fileName){
                 std::fill_n(cwd[i].file_name, 56, '\0');
@@ -851,14 +888,14 @@ FS::rm(std::string filepath)
         }
         disk.write(cwdBlock,(uint8_t*)&cwd);
     }
-    else
+    else //not allowed to remove a directory
     {
         std::cout << filepath << " is a directory!" << std::endl;
         cwdBlock = savedBlock;
         disk.read(cwdBlock,(uint8_t*)&cwd);
         return -1;
     }
-    sizeUpdater(-file_entry.size);
+    sizeUpdater(-file_entry.size); //udate the size of the parent directory
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
     return 0;
@@ -878,6 +915,7 @@ FS::append(std::string filepath1, std::string filepath2)
     pathExtruder(filepath1, sourcePathArgs);
     pathExtruder(filepath2, destPathArgs);
 
+    //map to the parent directory of the source file
     for (int i = 0; i != sourcePathArgs.size() - 1; i++){
         if(cd(sourcePathArgs[i],true) == -1){
             std::cout << filepath1 << " No such file or directory" << std::endl;
@@ -886,13 +924,14 @@ FS::append(std::string filepath1, std::string filepath2)
             return -1;
         }
     }
-    
+    //checks if the file exists
     if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry)){
         std::cout << "The file " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
+    //check if the process is allowed to read information from the source file
     if(!accessCheck(source_file_entry.access_rights,READ)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -907,6 +946,7 @@ FS::append(std::string filepath1, std::string filepath2)
         return -1;
     }
 
+    //file1_NumberOfBlocks holds the number of blocks the source file require to be appended
     int file1_NumberOfBlocks;
     if(source_file_entry.size % BLOCK_SIZE != 0){
         file1_NumberOfBlocks = (source_file_entry.size / BLOCK_SIZE )+1;
@@ -921,7 +961,7 @@ FS::append(std::string filepath1, std::string filepath2)
 
     disk.read(savedBlock,(uint8_t*)&cwd);
     cwdBlock = savedBlock;
-    for (int i = 0; i != destPathArgs.size() - 1; i++){
+    for (int i = 0; i != destPathArgs.size() - 1; i++){//map to the destination target
         if(cd(destPathArgs[i],true) == -1){
             std::cout << filepath2 << " No such file or directory" << std::endl;
             disk.read(savedBlock,(uint8_t*)&cwd);
@@ -929,13 +969,14 @@ FS::append(std::string filepath1, std::string filepath2)
             return -1;
         }
     }
-    
+    //check if the destination file exists
     if(!fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry)){
         std::cout << "The file " << destPathArgs[destPathArgs.size() - 1] << " does not exist "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
+    //checks if the process can write in the destination file
     if(!accessCheck(dest_file_entry.access_rights,WRITE)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -949,6 +990,7 @@ FS::append(std::string filepath1, std::string filepath2)
         cwdBlock = savedBlock;
         return -1;
     }
+    
     int file2_NumberOfBlocks;
     if(dest_file_entry.size % BLOCK_SIZE != 0){
         file2_NumberOfBlocks = (dest_file_entry.size / BLOCK_SIZE )+1;
@@ -960,13 +1002,16 @@ FS::append(std::string filepath1, std::string filepath2)
         file2_NumberOfBlocks = source_file_entry.size / BLOCK_SIZE;
     }
 
+    /*file2_lastBlock will have the value 
+    of the destination last disk block. Helps to know where
+    to start appending the data*/
     int file2_lastBlock = dest_file_entry.first_blk;
     while(fat[file2_lastBlock] != FAT_EOF){
         file2_lastBlock = fat[file2_lastBlock];
     }
     
 
-    int requierdblocks = 0 ;
+    int requierdblocks = 0 ; //How many blocks the source file require to be appended
     int * newBlocks = nullptr;
     if((source_file_entry.size + source_file_entry.size)/BLOCK_SIZE > file1_NumberOfBlocks){
         
@@ -977,23 +1022,26 @@ FS::append(std::string filepath1, std::string filepath2)
         {
             requierdblocks = ((source_file_entry.size + dest_file_entry.size) / BLOCK_SIZE) + 1 - file2_NumberOfBlocks;
         }
-        
+        //append the required blocks to the destination file
         newBlocks = appendBlocks(dest_file_entry.first_blk,requierdblocks * BLOCK_SIZE);
     }
+
     char file1_Input[file1_NumberOfBlocks][BLOCK_SIZE];
     int currentBlock = source_file_entry.first_blk;
     int i = 0;
     while(currentBlock != FAT_EOF){
+        // put the source file data into the file1_Input array
         disk.read(currentBlock,(uint8_t*)&file1_Input[i]);
         currentBlock = fat[currentBlock];
         i++;
     }
     char file2[BLOCK_SIZE];
     disk.read(file2_lastBlock,(uint8_t*)&file2);
-    int file2_startIndex = (dest_file_entry.size % BLOCK_SIZE) ;
+    int file2_startIndex = (dest_file_entry.size % BLOCK_SIZE); //where to start appending the data
     int file1_dataIndex = 0;
     
     int file1_blockIndex = 0;
+    //append until we reach the end of the source file.
     while(file1_blockIndex != file1_NumberOfBlocks && file2_lastBlock != FAT_EOF ){
         for(int dataIndex = file2_startIndex; dataIndex != BLOCK_SIZE; dataIndex ++){
             file2[dataIndex] = file1_Input[file1_blockIndex][file1_dataIndex];
@@ -1032,7 +1080,7 @@ FS::mkdir(std::string dirpath)
     std::vector<std::string> pathArgs;
     pathExtruder(dirpath, pathArgs);
 
-
+    //map to the parent directory 
     for (int i = 0; i != pathArgs.size() - 1; i++){
         if(cd(pathArgs[i],true) == -1){
             std::cout << dirpath << " No such file or directory" << std::endl;
@@ -1041,6 +1089,7 @@ FS::mkdir(std::string dirpath)
             return -1;
         }
     }
+    //Checks if the process can do changes in the parent directory
     if(!accessCheck(cwd[0].access_rights,WRITE)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -1056,8 +1105,10 @@ FS::mkdir(std::string dirpath)
         return -1;
     }
 
+
     int * newBlock = findFreeBlocks(BLOCK_SIZE);
     dir_entry newDir[(BLOCK_SIZE / sizeof(dir_entry)) + 1 ];
+    //Add the . directory entry which stores information about the directory that will be created
     dir_entry self;
     std::fill_n(self.file_name,56,'\0');
     std::fill_n(newDir, (BLOCK_SIZE / sizeof(dir_entry)) + 1, self);
@@ -1067,7 +1118,7 @@ FS::mkdir(std::string dirpath)
     self.type = TYPE_DIR;
     self.access_rights = WRITE|READ;
     newDir[0] = self;
-    
+    // Add the .. directory entry which stores information about the parent directory
     std::fill_n(parentDir.file_name,56,'\0');
     parentDir.file_name[0] = '.';
     parentDir.file_name[1] = '.';
@@ -1075,7 +1126,7 @@ FS::mkdir(std::string dirpath)
     newDir[1] = parentDir;
     disk.write(newBlock[0],(uint8_t*)&newDir);
 
-    
+    //append the new directoy entry to the parent
     if(!entryInit(pathArgs[pathArgs.size() - 1],0,newBlock[0],TYPE_DIR,READ|WRITE)){
         std::cout << "The directory " << pathArgs[pathArgs.size() - 2] << " has no enough space\n";
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -1093,13 +1144,13 @@ FS::mkdir(std::string dirpath)
 int
 FS::cd(std::string dirpath,bool privateFunc  )
 {
-    
     if(!privateFunc){
         std::cout << "FS::cd(" << dirpath << ")\n";
     }
     std::vector<std::string> pathArgs;
     pathExtruder(dirpath,pathArgs);
 
+    //if the path is / then the process load the root directory to the cwd array
     if(pathArgs[0] == "/"){
         disk.read(ROOT_BLOCK,(uint8_t*)&cwd);
         cwdBlock = ROOT_BLOCK;
@@ -1107,7 +1158,7 @@ FS::cd(std::string dirpath,bool privateFunc  )
             return 0;
         }
         std::string nextPath = "";
-        for (int i = 1; i < pathArgs.size(); i++){
+        for (int i = 1; i < pathArgs.size(); i++){//fill the next path from the pathArgs array and recursive call cd() again
             nextPath += pathArgs[i];
             nextPath += '/';
         }
@@ -1121,9 +1172,9 @@ FS::cd(std::string dirpath,bool privateFunc  )
             return -1;
         }
     }
-
+    //if the target is .. the load the parent directory and recursivly call cd on the remaining path
     else if(pathArgs[0] == ".."){
-        if(cwdBlock != ROOT_BLOCK){
+        if(cwdBlock != ROOT_BLOCK){ //if the process ing the root directory, just call the remaining path
             disk.read(cwd[1].first_blk,(uint8_t*)&cwd);
             cwdBlock = cwd[0].first_blk;
             if(pathArgs.size() == 1){
@@ -1164,8 +1215,8 @@ FS::cd(std::string dirpath,bool privateFunc  )
 
     else
     {
+        //find the first block of the target directory by call fileExists()
         dir_entry dirEntry;
-
         if(!fileExists(pathArgs[0],dirEntry)){
             if(!privateFunc){
                 std::cout << dirpath << " No such file or directory" << std::endl;
@@ -1174,6 +1225,9 @@ FS::cd(std::string dirpath,bool privateFunc  )
         }
         else
         {
+            /* if the target is file, just stay in the directory. 
+            else load the cwd array and call recursivly cd() on 
+            the remaining path */
             if(dirEntry.type != TYPE_FILE){
                 disk.read(dirEntry.first_blk,(uint8_t*)&cwd);
                 cwdBlock = dirEntry.first_blk;
@@ -1214,7 +1268,10 @@ FS::pwd()
     std::cout << "FS::pwd()\n";
     int savedBlock = cwdBlock;
     std::string fullPath = "";
-    int childBlock = cwd[0].first_blk;;
+    int childBlock = cwd[0].first_blk;
+    /* while we the process not reached its final destination
+    load the parent directory and add the name of the child directory
+    i.e the directory that the process has came from*/
     while(childBlock != ROOT_BLOCK ){
         std::string temp = "";
         cd("..", true);
