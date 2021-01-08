@@ -1283,7 +1283,7 @@ FS::chmod(std::string accessrights, std::string filepath)
                     }
                 }
                 if(!formatFound){
-                    std::cout << "Invalid format, available formats: (--e, -w-, -we, r--, r-e, rw-, rwe) " << std::endl;
+                    std::cout << "Invalid file mode, available modes: (--e, -w-, -we, r--, r-e, rw-, rwe) " << std::endl;
                 }
 
                 break;
