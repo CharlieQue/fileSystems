@@ -1300,10 +1300,13 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     int savedBlock = cwdBlock;
+    //Array to store all possible mode values
     std::string accessValuesString[7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
+    
     std::vector<std::string> pathArgs;
     pathExtruder(filepath,pathArgs);
-    for(int i = 0; i != pathArgs.size() - 1; i++){
+    /*maps to the target parent directory. and checks if the path is approachable*/
+    for(int i = 0; i != pathArgs.size() - 1; i++){ 
         if(cd(pathArgs[i]) == -1){
             std::cout << filepath << ": No such file or directory" << std::endl;
             cwdBlock = savedBlock;
@@ -1312,6 +1315,7 @@ FS::chmod(std::string accessrights, std::string filepath)
         }
     }
     dir_entry fileEntry;
+    //checks if the target directory entry exists
     if(!fileExists(pathArgs[pathArgs.size() - 1],fileEntry)){
         std::cout << filepath << ": No such file or directory" << std::endl;
             cwdBlock = savedBlock;
@@ -1323,23 +1327,24 @@ FS::chmod(std::string accessrights, std::string filepath)
         std::string fileName = "";
         fileName += fileEntry.file_name;
         bool formatFound = false;
+        //first loop till the process find the file entry
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i++){
             if(cwd[i].file_name == fileName){
-                for(int j = 0; j != 7; j++ ){
-                    if(accessrights == accessValuesString[j]){
-                        cwd[i].access_rights = j + 1;
+                for(int j = 0; j != 7; j++ ){ //loop through the available access strings
+                    if(accessrights == accessValuesString[j]){//if the given value is allowed
+                        cwd[i].access_rights = j + 1; //change teh access rights for the file entry in the parent directroy
                         disk.write(cwdBlock,(uint8_t*)&cwd);
                         if(fileEntry.type == TYPE_DIR){
                             cd(fileEntry.file_name, true);
-                            cwd[0].access_rights = j + 1;
+                            cwd[0].access_rights = j + 1;//change teh access rights for the file entry in the target directroy
                             disk.write(cwdBlock,(uint8_t*)&cwd);
                             cd("..", true);
                         }
-                        formatFound = true;
+                        formatFound = true; //to mark that the given value is allowed.
                         break;
                     }
                 }
-                if(!formatFound){
+                if(!formatFound){ //if the given value not allowed
                     std::cout << "Invalid file mode, available modes: (--e, -w-, -we, r--, r-e, rw-, rwe) " << std::endl;
                 }
 
