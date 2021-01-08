@@ -2,7 +2,9 @@
 #include <sstream>
 #include "fs.h"
 
-
+/*
+A constructor to read the current blocks from the disk
+*/
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
@@ -16,7 +18,8 @@ FS::~FS()
 
 }
 
-
+/* A func to put the std::string path pased to the other functions
+into an dynamkc array of directories names*/
 void
 FS::pathExtruder(std::string file_path, std::vector <std::string>& pathArgs){
     int startIndex = 0;
@@ -44,6 +47,8 @@ FS::pathExtruder(std::string file_path, std::vector <std::string>& pathArgs){
     }
 }
 
+/* Func to find the available free blocks on the disk 
+based on the fat values*/
 int*
 FS::findFreeBlocks(size_t fileSize){
     int numOfBlocks;
@@ -78,9 +83,10 @@ FS::findFreeBlocks(size_t fileSize){
             }
         }
         free(freeBlocks);
-        return nullptr;
+        return nullptr; //if no enough space on the disk, this helps the main functions to check if there is enough space
     }
 
+    /* fill the fat table with the needed blocks*/
     for(int i = 0; i != numOfBlocks; i ++){
         if(i != numOfBlocks - 1 ){
             fat[freeBlocks[i]] = freeBlocks[i+1];
@@ -91,6 +97,7 @@ FS::findFreeBlocks(size_t fileSize){
     return freeBlocks;
 }
 
+/* Func to append more blocks to a file if needed*/
 int*
 FS::appendBlocks(uint16_t firstBlock,size_t fileSize){
     int* freeBlocks = findFreeBlocks(fileSize);
@@ -103,9 +110,9 @@ FS::appendBlocks(uint16_t firstBlock,size_t fileSize){
     }
     fat[lastBlock] = freeBlocks[0];
     return freeBlocks;
-
 }
 
+/* Func to check if a file or directory exist in the curren working directory*/
 bool
 FS::fileExists(std::string filepath , dir_entry & fileEntry){
     bool fileExists = false;
@@ -123,6 +130,7 @@ FS::fileExists(std::string filepath , dir_entry & fileEntry){
 
 }
 
+/*Func to add a new directoy entry and its information to the current working directory */
 bool
 FS::entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int type,int access_rights){
     dir_entry newEntry;
@@ -135,6 +143,7 @@ FS::entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int ty
     newEntry.type = type;
     newEntry.access_rights = access_rights;
 
+    /* this loop checks if there is enough space in the current working directory for the new directory entry*/
     int freeEnteryIndex = -1;
     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
         if(strlen(cwd[i].file_name) == 0){
@@ -150,6 +159,7 @@ FS::entryInit(std::string filename, size_t fileSize, uint16_t firstBlock, int ty
     return true;
 }
 
+/*Func to check if we have a specific access to make som actions for a file or directory */
 bool 
 FS::accessCheck(uint8_t access_rights, uint8_t requestedAccess){
     std::string accessValues[7] = {"--e", "-w-", "-we", "r--", "r-e", "rw-", "rwe"};
@@ -158,20 +168,21 @@ FS::accessCheck(uint8_t access_rights, uint8_t requestedAccess){
     for(int i = 0; i < 3; i++){
         if (requestedAccessString[i] != '-'){
             if(requestedAccessString[i] != accessValuesString[i]){
-                return false;
+                return false; //return false if we don't have the access i.g. file_access_rights r-- and reqiuested access: -w- will return false!
             }
         }
     }
     return true;
 }
 
+/*Func to update the size for each directory till it rach the root directory */
 void
 FS::sizeUpdater(size_t sizeArgs){
     int savedBlock = cwdBlock;
-    uint16_t childBlock = cwd[0].first_blk;
+    uint16_t childBlock = cwd[0].first_blk; // To find the recently updated child directoy entry in the parent directory
     cwd[0].size += sizeArgs;
     disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
-    while(childBlock != ROOT_BLOCK ){   
+    while(childBlock != ROOT_BLOCK ){   //then we reach the root directory 
         cd("..", true);
         cwd[0].size += sizeArgs;
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
@@ -189,11 +200,13 @@ FS::sizeUpdater(size_t sizeArgs){
     cwdBlock = savedBlock;
 
 }
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
 {
     std::cout << "FS::format()\n";
+    /* loop sets all disk block in the fat table exept the root directory and the fat blocks*/
     for(unsigned i = 0; i != (BLOCK_SIZE / 2); i++){
         if(i == ROOT_BLOCK){
             fat[ROOT_BLOCK] = FAT_EOF;
@@ -206,6 +219,7 @@ FS::format()
         }
     }
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
+    /*A . directoy which have information about the directory itself*/
     dir_entry newEntry;
     std::fill_n(newEntry.file_name, 56, '\0');
     newEntry.file_name[0] = '.';
@@ -224,10 +238,12 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
-    int savedBlock = cwdBlock;
+    int savedBlock = cwdBlock; //to map to the cwd after cd()'s calls
     std::vector<std::string> pathArgs;
-    pathExtruder(filepath, pathArgs);
+    pathExtruder(filepath, pathArgs); //to get evry directoy name in an array 
 
+    /* this loop maps to the requested path 
+    and checks if the path is approachable or not*/
     for (int i = 0; i != pathArgs.size() - 1; i++){
         if(cd(pathArgs[i],true) == -1){
             std::cout << filepath << " No such file or directory" << std::endl;
@@ -236,6 +252,7 @@ FS::create(std::string filepath)
             return -1;
         }
     }
+    // checks if it is allowed to create a file in the requested path
     if(!accessCheck(cwd[0].access_rights,WRITE)){
         std::cout << "Access denied" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -243,27 +260,34 @@ FS::create(std::string filepath)
         return -1;
     }
     dir_entry file_entry;
-    if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){
+    if(fileExists(pathArgs[pathArgs.size() - 1], file_entry)){ //Checks if the file is already existed
         std::cout << "The file " << pathArgs[pathArgs.size() - 1] << " already exists "<< std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
 
+    /* ######################### 
+    To get data input from the user
+    */
     std::string line;
     char c;
     std::getline(std::cin, line);
     std::stringstream linestream(line);
     char fileOtput[BLOCK_SIZE];
+
+    /*############################
+    */
+
     std::fill_n(fileOtput,BLOCK_SIZE, '\0');
     int* freeBlocks = findFreeBlocks(line.size());
-    if(freeBlocks == nullptr){
+    if(freeBlocks == nullptr){ //checks if there is enough space on disk
         std::cout << "The file can't be created, no enough space on disk" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         return -1;
     }
-    
+    //checks if it is possiable to create a file entry in the requested path
     if(!entryInit(pathArgs[pathArgs.size() - 1],line.length(),freeBlocks[0],TYPE_FILE)){
         std::cout << "The maximum amount of files in the directory " << pathArgs[pathArgs.size() - 2] << " has been reached" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -275,7 +299,7 @@ FS::create(std::string filepath)
     int freeBlocksIndex = 0;
     while (linestream.get(c))
     {
-        
+        //writing the data to the disk
         if(streamSize == BLOCK_SIZE - 1){
             
             disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
@@ -292,7 +316,7 @@ FS::create(std::string filepath)
         disk.write(freeBlocks[freeBlocksIndex], (uint8_t*) &fileOtput);
     }
     
-
+    //updating the fat table
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     
     free(freeBlocks);
@@ -631,7 +655,7 @@ FS::mv(std::string sourcepath, std::string destpath)
     {
         disk.read(sourceParentBlock,(uint8_t*)&cwd);
         sizeUpdater(-source_file_entry.size);
-        
+
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
         if(destPathArgs.size() > 1){
