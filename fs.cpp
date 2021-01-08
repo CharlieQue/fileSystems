@@ -402,6 +402,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
 {
     std::cout << "FS::cp(" << sourcefilepath << "," << destfilepath << ")\n";
     int savedBlock = cwdBlock;
+
     std::vector<std::string> sourcePathArgs;
     std::vector<std::string> destPathArgs;
     dir_entry source_file_entry;
@@ -417,6 +418,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
             return -1;
         }
     }
+
     
     if(!fileExists(sourcePathArgs[sourcePathArgs.size() - 1], source_file_entry)){
         std::cout << "The file " << sourcePathArgs[sourcePathArgs.size() - 1] << " does not exists "<< std::endl;
@@ -437,8 +439,7 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         cwdBlock = savedBlock;
         return -1;
     }
-    
-    
+
     int numberOfBlocks;
     if(source_file_entry.size % BLOCK_SIZE != 0){
         numberOfBlocks = (source_file_entry.size / BLOCK_SIZE )+1;
@@ -458,36 +459,6 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
     for(int i = 0; i != numberOfBlocks; i++){
         disk.read(fileBlocks[i],(uint8_t*) & fileInput[i]);
     }
-    
-    disk.read(savedBlock,(uint8_t*)&cwd);
-    cwdBlock = savedBlock;
-    for (int i = 0; i != destPathArgs.size() - 1; i++){
-        if(cd(destPathArgs[i],true) == -1){
-            std::cout << destfilepath << " No such file or directory" << std::endl;
-            disk.read(savedBlock,(uint8_t*)&cwd);
-            cwdBlock = savedBlock;
-            return -1;
-        }
-    }
-    if(!accessCheck(cwd[0].access_rights,WRITE)){
-        std::cout << "Access denied" << std::endl;
-        disk.read(savedBlock,(uint8_t*)&cwd);
-        cwdBlock = savedBlock;
-        return -1;
-    }
-    if(fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry)){
-        std::cout << "The file " << destPathArgs[destPathArgs.size() - 1] << " is already exist "<< std::endl;
-        disk.read(savedBlock,(uint8_t*)&cwd);
-        cwdBlock = savedBlock;
-        return -1;
-    }
-    
-    if(dest_file_entry.type == TYPE_DIR){
-        std::cout << destfilepath << "is a directory (not copied)" << std::endl;
-        disk.read(savedBlock,(uint8_t*)&cwd);
-        cwdBlock = savedBlock;
-        return -1;
-    }
     int* freeBlocks = nullptr;
     if(source_file_entry.size == 0){
         freeBlocks = findFreeBlocks(1);
@@ -503,18 +474,88 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
         cwdBlock = savedBlock;
         return -1;
     }
-
-    if(!entryInit(destPathArgs[destPathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
-        std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
-        disk.read(savedBlock,(uint8_t*)&cwd);
-        cwdBlock = savedBlock;
-        return -1;
+    
+    disk.read(savedBlock,(uint8_t*)&cwd);
+    cwdBlock = savedBlock;
+    if(destPathArgs.size() > 1){
+        for (int i = 0; i != destPathArgs.size() - 1; i++){
+            if(cd(destPathArgs[i],true) == -1){
+                std::cout << destfilepath << " No such file or directory" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
+        }
     }
     
-    for(int i = 0; i != numberOfBlocks; i++){
-        disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
+    
+
+    bool destFileFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
+    if(!destFileFlag){
+        std::string fileName = "";
+        
+
+        if(!accessCheck(cwd[0].access_rights,WRITE)){
+            std::cout << "Access denied" << std::endl;
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+
+        if(!entryInit(destPathArgs[destPathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
+            std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+            disk.read(savedBlock,(uint8_t*)&cwd);
+            cwdBlock = savedBlock;
+            return -1;
+        }
+        
+        for(int i = 0; i != numberOfBlocks; i++){
+            disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
+        }
+        disk.write(FAT_BLOCK,(uint8_t*)&fat);
+        
     }
-    disk.write(FAT_BLOCK,(uint8_t*)&fat);
+    else
+    {
+        if(dest_file_entry.type == TYPE_DIR){
+            cd(dest_file_entry.file_name,true);
+            if(!accessCheck(cwd[0].access_rights,WRITE)){
+                std::cout << "Access denied" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
+            if(!entryInit(sourcePathArgs[sourcePathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
+                std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
+            
+            for(int i = 0; i != numberOfBlocks; i++){
+                disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
+            }
+            disk.write(FAT_BLOCK,(uint8_t*)&fat);
+        }
+        else
+        {
+            std::string newFileName = destPathArgs[destPathArgs.size() - 1];
+            newFileName += " (copied)";
+            if(!entryInit(newFileName,source_file_entry.size,freeBlocks[0],TYPE_FILE)){
+                std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
+            
+            for(int i = 0; i != numberOfBlocks; i++){
+                disk.write(freeBlocks[i],(uint8_t*)&fileInput[i]);
+            }
+            disk.write(FAT_BLOCK,(uint8_t*)&fat);
+        }
+        
+    }
+    
     free(freeBlocks);
     sizeUpdater(source_file_entry.size);
     disk.read(savedBlock,(uint8_t*)&cwd);
