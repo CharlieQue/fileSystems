@@ -168,10 +168,10 @@ FS::accessCheck(uint8_t access_rights, uint8_t requestedAccess){
 void
 FS::sizeUpdater(size_t sizeArgs){
     int savedBlock = cwdBlock;
-    int childBlock = cwd[0].first_blk;
+    uint16_t childBlock = cwd[0].first_blk;
     cwd[0].size += sizeArgs;
     disk.write(cwd[0].first_blk,(uint8_t*)&cwd);
-    while(childBlock != ROOT_BLOCK ){
+    while(childBlock != ROOT_BLOCK ){   
         cd("..", true);
         cwd[0].size += sizeArgs;
         for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
@@ -492,17 +492,22 @@ FS::cp(std::string sourcefilepath, std::string destfilepath)
 
     bool destFileFlag = fileExists(destPathArgs[destPathArgs.size() - 1], dest_file_entry);
     if(!destFileFlag){
-        std::string fileName = "";
+        std::string fileName = destPathArgs[destPathArgs.size() - 1];;
         
-
+        if(destPathArgs.size() == 1 && destPathArgs[0] == "/"){
+            fileName = sourcePathArgs[sourcePathArgs.size() - 1];
+        }
         if(!accessCheck(cwd[0].access_rights,WRITE)){
             std::cout << "Access denied" << std::endl;
             disk.read(savedBlock,(uint8_t*)&cwd);
             cwdBlock = savedBlock;
             return -1;
         }
-
-        if(!entryInit(destPathArgs[destPathArgs.size() - 1],source_file_entry.size,freeBlocks[0],TYPE_FILE)){
+        dir_entry temp;
+        if(fileExists(fileName, temp)){
+            fileName += " (copied)";
+        }
+        if(!entryInit(fileName,source_file_entry.size,freeBlocks[0],TYPE_FILE)){
             std::cout << "The directory " << destPathArgs[destPathArgs.size() - 2] << " has no enough space\n";
             disk.read(savedBlock,(uint8_t*)&cwd);
             cwdBlock = savedBlock;
@@ -578,12 +583,14 @@ FS::mv(std::string sourcepath, std::string destpath)
     pathExtruder(sourcepath, sourcePathArgs);
     pathExtruder(destpath, destPathArgs);
 
-    for (int i = 0; i != sourcePathArgs.size() - 1; i++){
-        if(cd(sourcePathArgs[i],true) == -1){
-            std::cout << sourcepath << " No such file or directory" << std::endl;
-            disk.read(savedBlock,(uint8_t*)&cwd);
-            cwdBlock = savedBlock;
-            return -1;
+    if(sourcePathArgs.size() > 1){
+        for (int i = 0; i != sourcePathArgs.size() - 1; i++){
+            if(cd(sourcePathArgs[i],true) == -1){
+                std::cout << sourcepath << " No such file or directory" << std::endl;
+                disk.read(savedBlock,(uint8_t*)&cwd);
+                cwdBlock = savedBlock;
+                return -1;
+            }
         }
     }
     
@@ -622,16 +629,22 @@ FS::mv(std::string sourcepath, std::string destpath)
 
     else
     {
+        disk.read(sourceParentBlock,(uint8_t*)&cwd);
+        sizeUpdater(-source_file_entry.size);
+        
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
-        for (int i = 0; i != destPathArgs.size() - 1; i++){
-            if(cd(destPathArgs[i],true) == -1){
-                std::cout << destpath << " No such file or directory" << std::endl;
-                disk.read(savedBlock,(uint8_t*)&cwd);
-                cwdBlock = savedBlock;
-                return -1;
+        if(destPathArgs.size() > 1){
+            for (int i = 0; i != destPathArgs.size() - 1; i++){
+                if(cd(destPathArgs[i],true) == -1){
+                    std::cout << destpath << " No such file or directory" << std::endl;
+                    disk.read(savedBlock,(uint8_t*)&cwd);
+                    cwdBlock = savedBlock;
+                    return -1;
+                }
             }
         }
+        
         int destParentBlock = cwd[0].first_blk; //used for sizeUpdater()
         
         
@@ -693,7 +706,8 @@ FS::mv(std::string sourcepath, std::string destpath)
                         cwdBlock = savedBlock;
                         return -1;
                     }
-                    int currentBlock = dest_file_entry.first_blk;
+                    int currentBlock = source_file_entry.first_blk;
+                    std::cout << "check 1" << std::endl;
                     while (fat[currentBlock] != FAT_EOF ){
                         int tmp = currentBlock;
                         currentBlock = fat[currentBlock];
@@ -701,7 +715,7 @@ FS::mv(std::string sourcepath, std::string destpath)
                     }
                     fat[currentBlock] = FAT_FREE;
                     disk.write(FAT_BLOCK,(uint8_t*)&fat);
-
+                    std::cout << "check 2" << std::endl;
                     std::string fileName = dest_file_entry.file_name;
                     for(int i = 0; i != BLOCK_SIZE / sizeof(dir_entry); i ++){
                         if(cwd[i].file_name == fileName){
@@ -745,14 +759,13 @@ FS::mv(std::string sourcepath, std::string destpath)
             disk.read(sourceFileBlock,(uint8_t*)&cwd);
             cwd[1].first_blk = dest_file_entry.first_blk;
         }
-            disk.read(sourceParentBlock,(uint8_t*)&cwd);
-            sizeUpdater(-source_file_entry.size);
-            disk.read(destParentBlock,(uint8_t*)&cwd);
-            sizeUpdater(source_file_entry.size);
-
-            disk.read(savedBlock,(uint8_t*)&cwd);
-            cwdBlock = savedBlock;
-            return 0;
+        
+        disk.read(destParentBlock,(uint8_t*)&cwd);
+        sizeUpdater(source_file_entry.size);
+        std::cout << "Check 5" << std::endl;
+        disk.read(savedBlock,(uint8_t*)&cwd);
+        cwdBlock = savedBlock;
+        return 0;
     }
     
 }
