@@ -271,16 +271,25 @@ FS::create(std::string filepath)
     To get data input from the user
     */
     std::string line;
+    std::string input;
     char c;
-    std::getline(std::cin, line);
-    std::stringstream linestream(line);
+    while(true){
+        std::getline(std::cin, line);
+        if(line == ""){
+            break;
+        }
+        input+=line;
+        input += '\n';
+
+    }
+    std::stringstream linestream(input);
     char fileOtput[BLOCK_SIZE];
 
     /*############################
     */
 
     std::fill_n(fileOtput,BLOCK_SIZE, '\0');
-    int* freeBlocks = findFreeBlocks(line.size());
+    int* freeBlocks = findFreeBlocks(input.size());
     if(freeBlocks == nullptr){ //checks if there is enough space on disk
         std::cout << "The file can't be created, no enough space on disk" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
@@ -288,7 +297,7 @@ FS::create(std::string filepath)
         return -1;
     }
     //checks if it is possiable to create a file entry in the requested path
-    if(!entryInit(pathArgs[pathArgs.size() - 1],line.length(),freeBlocks[0],TYPE_FILE)){
+    if(!entryInit(pathArgs[pathArgs.size() - 1],input.length(),freeBlocks[0],TYPE_FILE)){
         std::cout << "The maximum amount of files in the directory " << pathArgs[pathArgs.size() - 2] << " has been reached" << std::endl;
         disk.read(savedBlock,(uint8_t*)&cwd);
         cwdBlock = savedBlock;
@@ -320,7 +329,7 @@ FS::create(std::string filepath)
     disk.write(FAT_BLOCK,(uint8_t*)&fat);
     
     free(freeBlocks);
-    sizeUpdater(line.size());
+    sizeUpdater(input.size());
     cwdBlock = savedBlock;
     disk.read(cwdBlock,(uint8_t*)&cwd);
     return 0;
